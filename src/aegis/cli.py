@@ -237,20 +237,73 @@ Project: {project['name']}"""
             # Determine working directory
             working_dir = code_path if code_path and os.path.isdir(code_path) else None
 
+            # Set up logging
+            from datetime import datetime
+            from pathlib import Path
+
+            logs_dir = Path.cwd() / "logs"
+            logs_dir.mkdir(exist_ok=True)
+            log_file = logs_dir / f"{project_name.lower()}.log"
+            timestamp = datetime.now().isoformat()
+
             console.print("[bold]Executing task with Claude CLI...[/bold]\n")
             console.print(f"[dim]Task: {first_task['name']}[/dim]")
-            console.print(f"[dim]Working directory: {working_dir or 'current directory'}[/dim]\n")
+            console.print(f"[dim]Working directory: {working_dir or 'current directory'}[/dim]")
+            console.print(f"[dim]Logging to: {log_file}[/dim]\n")
             console.print("[dim]" + "=" * 60 + "[/dim]\n")
 
             try:
-                # Run claude interactively with proper stdin
+                # Run claude with output capture (non-interactive)
                 result = subprocess.run(
                     ["claude", "--dangerously-skip-permissions", task_context],
                     cwd=working_dir,
                     check=False,
+                    capture_output=True,
+                    text=True,
                 )
 
+                # Combine output
+                output = result.stdout
+                if result.stderr:
+                    output += f"\n\nSTDERR:\n{result.stderr}"
+
+                # Write to log file
+                log_header = f"\n{'='*80}\n[{timestamp}] Task: {first_task['name']}\n{'='*80}\n\n"
+                try:
+                    with open(log_file, "a") as f:
+                        f.write(log_header)
+                        f.write(output)
+                        f.write(f"\n\nExit code: {result.returncode}\n")
+                except Exception as e:
+                    console.print(f"[yellow]⚠[/yellow] Failed to write to log: {e}")
+
                 console.print("\n" + "[dim]" + "=" * 60 + "[/dim]\n")
+
+                # Post comment to Asana
+                console.print("Posting results to Asana...")
+
+                status_emoji = "✓" if result.returncode == 0 else "⚠️"
+                status_text = "completed" if result.returncode == 0 else f"completed with errors (exit code {result.returncode})"
+
+                comment_text = f"""{status_emoji} Task {status_text} via Aegis
+
+**Timestamp**: {timestamp}
+
+**Output**:
+```
+{output[:60000] if output else '(No output captured)'}
+```
+
+**Log file**: `{log_file}`
+"""
+
+                comment_data = {"data": {"text": comment_text}}
+
+                try:
+                    await post_asana_comment(stories_api, comment_data, first_task["gid"])
+                    console.print("[green]✓[/green] Comment posted to Asana\n")
+                except Exception as e:
+                    console.print(f"[yellow]⚠[/yellow] Failed to post comment: {e}\n")
 
                 if result.returncode == 0:
                     console.print("[bold green]✓ Task execution completed[/bold green]\n")
