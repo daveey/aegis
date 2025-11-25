@@ -86,11 +86,9 @@ class TestSettings:
         from pydantic import ValidationError
 
         with patch.dict(os.environ, {}, clear=True):
-            # Need to override the model_config to prevent reading from .env file
-            with patch("aegis.config.Settings.model_config") as mock_config:
-                mock_config.env_file = None
-                with pytest.raises(ValidationError):
-                    Settings(_env_file=None)
+            # Use a non-existent env file to prevent loading from .env
+            with pytest.raises(ValidationError):
+                Settings(_env_file="/non/existent/.env")
 
     def test_settings_custom_values(self) -> None:
         """Test custom configuration values."""

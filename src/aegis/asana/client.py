@@ -79,7 +79,7 @@ class AsanaClient:
 
             tasks = []
             for task_data in tasks_response:
-                task_dict = task_data.to_dict()
+                task_dict = task_data if isinstance(task_data, dict) else task_data.to_dict()
                 # Optionally filter for assigned tasks
                 if assigned_only and (
                     not task_dict.get("assignee") or task_dict.get("completed")
@@ -141,7 +141,7 @@ class AsanaClient:
                 self.tasks_api.get_task, task_gid, opt_fields=",".join(opt_fields)
             )
 
-            task_dict = task_response.to_dict()
+            task_dict = task_response if isinstance(task_response, dict) else task_response.to_dict()
             logger.info("fetched_task", task_gid=task_gid, task_name=task_dict.get("name"))
             return self._parse_task(task_dict)
 
@@ -172,7 +172,7 @@ class AsanaClient:
                 self.tasks_api.update_task, {"data": update_data}, task_gid
             )
 
-            task_dict = task_response.to_dict()
+            task_dict = task_response if isinstance(task_response, dict) else task_response.to_dict()
             logger.info("updated_task", task_gid=task_gid, updates=list(update_data.keys()))
             return self._parse_task(task_dict)
 
@@ -205,7 +205,7 @@ class AsanaClient:
                 opt_fields=",".join(opt_fields),
             )
 
-            story_dict = story_response.to_dict()
+            story_dict = story_response if isinstance(story_response, dict) else story_response.to_dict()
             comment = AsanaComment(
                 gid=story_dict["gid"],
                 created_at=story_dict["created_at"],
@@ -249,7 +249,7 @@ class AsanaClient:
 
             comments = []
             for story_obj in stories_response:
-                story_dict = story_obj.to_dict()
+                story_dict = story_obj if isinstance(story_obj, dict) else story_obj.to_dict()
                 # Only include comment stories, not system stories
                 if story_dict.get("type") == "comment" and story_dict.get("text"):
                     comments.append(
@@ -293,7 +293,7 @@ class AsanaClient:
                 self.projects_api.get_project, project_gid, opt_fields=",".join(opt_fields)
             )
 
-            project_dict = project_response.to_dict()
+            project_dict = project_response if isinstance(project_response, dict) else project_response.to_dict()
             project = AsanaProject(
                 gid=project_dict["gid"],
                 name=project_dict["name"],
