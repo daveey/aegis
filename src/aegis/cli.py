@@ -6,6 +6,8 @@ import sys
 import click
 import structlog
 from rich.console import Console
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+import asana.rest
 
 from aegis.config import get_settings
 
@@ -117,6 +119,31 @@ def test_claude() -> None:
 def do(project_name: str) -> None:
     """Pick the first task from a project and execute it using Claude CLI."""
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((asana.rest.ApiException, ConnectionError)),
+        reraise=True,
+    )
+    async def post_asana_comment(stories_api, comment_data: dict, task_gid: str) -> None:
+        """Post a comment to Asana with retry logic."""
+        await asyncio.to_thread(
+            stories_api.create_story_for_task,
+            comment_data,
+            task_gid,
+            {},
+        )
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((asana.rest.ApiException, ConnectionError)),
+        reraise=True,
+    )
+    async def fetch_with_retry(api_call, *args, **kwargs):
+        """Fetch from Asana API with retry logic."""
+        return await asyncio.to_thread(api_call, *args, **kwargs)
+
     async def _do() -> None:
         import asana
         import subprocess
@@ -140,7 +167,7 @@ def do(project_name: str) -> None:
             stories_api = asana.StoriesApi(api_client)
 
             # Get projects from portfolio
-            projects_generator = await asyncio.to_thread(
+            projects_generator = await fetch_with_retry(
                 portfolios_api.get_items_for_portfolio, portfolio_gid, {"opt_fields": "name,gid"}
             )
             projects_list = list(projects_generator)
@@ -162,7 +189,7 @@ def do(project_name: str) -> None:
             console.print(f"[green]✓[/green] Found project: {project['name']} (GID: {project['gid']})\n")
 
             # Get project details to find code path
-            project_details = await asyncio.to_thread(
+            project_details = await fetch_with_retry(
                 projects_api.get_project, project["gid"], {"opt_fields": "name,notes"}
             )
 
@@ -177,7 +204,7 @@ def do(project_name: str) -> None:
 
             # Get tasks from project
             console.print("Fetching tasks...")
-            tasks_generator = await asyncio.to_thread(
+            tasks_generator = await fetch_with_retry(
                 tasks_api.get_tasks_for_project,
                 project["gid"],
                 {"opt_fields": "name,notes,completed,gid,permalink_url"},
@@ -247,10 +274,13 @@ Project: {project['name']}"""
                     output += f"\n\nSTDERR:\n{result.stderr}"
 
                 # Write to log file
-                with open(log_file, "a") as f:
-                    f.write(log_header)
-                    f.write(output)
-                    f.write(f"\n\nExit code: {result.returncode}\n")
+                try:
+                    with open(log_file, "a") as f:
+                        f.write(log_header)
+                        f.write(output)
+                        f.write(f"\n\nExit code: {result.returncode}\n")
+                except Exception as e:
+                    console.print(f"[yellow]⚠[/yellow] Failed to write to log file: {e}")
 
                 console.print("[dim]" + "=" * 60 + "[/dim]\n")
 
@@ -279,14 +309,12 @@ Project: {project['name']}"""
                         }
                     }
 
-                    await asyncio.to_thread(
-                        stories_api.create_story_for_task,
-                        comment_data,
-                        first_task["gid"],
-                        {},
-                    )
-
-                    console.print("[green]✓[/green] Comment posted to Asana task\n")
+                    try:
+                        await post_asana_comment(stories_api, comment_data, first_task["gid"])
+                        console.print("[green]✓[/green] Comment posted to Asana task\n")
+                    except Exception as e:
+                        console.print(f"[yellow]⚠[/yellow] Failed to post comment to Asana: {e}")
+                        console.print("[dim]Task completed but comment not posted[/dim]\n")
 
                 else:
                     console.print(
@@ -312,28 +340,52 @@ Project: {project['name']}"""
                         }
                     }
 
-                    await asyncio.to_thread(
-                        stories_api.create_story_for_task,
-                        comment_data,
-                        first_task["gid"],
-                        {},
-                    )
-
-                    console.print("[yellow]⚠[/yellow] Comment posted to Asana task\n")
+                    try:
+                        await post_asana_comment(stories_api, comment_data, first_task["gid"])
+                        console.print("[yellow]⚠[/yellow] Comment posted to Asana task\n")
+                    except Exception as e:
+                        console.print(f"[yellow]⚠[/yellow] Failed to post comment to Asana: {e}")
+                        console.print("[dim]Task failed and comment not posted[/dim]\n")
 
             except FileNotFoundError:
-                console.print(
-                    "[red]Error: 'claude' CLI not found. Please install it first.[/red]"
-                )
+                error_msg = "Error: 'claude' CLI not found. Please install it first."
+                console.print(f"[red]{error_msg}[/red]")
                 console.print("Install with: npm install -g @anthropic-ai/claude-cli")
+
+                # Try to log the error
+                try:
+                    with open(log_file, "a") as f:
+                        f.write(log_header)
+                        f.write(f"ERROR: {error_msg}\n")
+                except Exception:
+                    pass  # Best effort logging
+
                 sys.exit(1)
 
+            except Exception as e:
+                error_msg = f"Unexpected error during task execution: {e}"
+                console.print(f"[red]{error_msg}[/red]")
+
+                # Try to log the error
+                try:
+                    with open(log_file, "a") as f:
+                        f.write(log_header)
+                        f.write(f"ERROR: {error_msg}\n")
+                        import traceback
+                        f.write(traceback.format_exc())
+                except Exception:
+                    pass  # Best effort logging
+
+                # Don't exit - just log and continue
+                console.print("[dim]Error logged. Check log file for details.[/dim]\n")
+
         except Exception as e:
-            console.print(f"[red]Error executing task: {e}[/red]")
+            console.print(f"[red]Critical error: {e}[/red]")
             import traceback
 
             traceback.print_exc()
-            sys.exit(1)
+            console.print("[yellow]Command failed but not exiting to allow continued operation[/yellow]")
+            # Don't sys.exit(1) - be robust
 
     asyncio.run(_do())
 
