@@ -6,7 +6,19 @@ Aegis is an autonomous agent swarm orchestration platform that uses Asana for ta
 
 ## Quick Start
 
-This project is currently in the design phase. To get started:
+### For Operators
+
+To install and run Aegis:
+
+1. Review the [Operator Guide](docs/OPERATOR_GUIDE.md) for complete setup instructions
+2. Install dependencies: `pip install -e .`
+3. Configure environment: Copy `.env.example` to `.env` and fill in credentials
+4. Test connection: `aegis test-asana`
+5. Execute tasks: `aegis do <project_name>`
+
+### For Developers
+
+To contribute to Aegis development:
 
 1. Review the project vision and architecture in [`design/PROJECT_OVERVIEW.md`](design/PROJECT_OVERVIEW.md)
 2. Check the detailed task list and roadmap in [`design/TASK_LIST.md`](design/TASK_LIST.md)
@@ -18,9 +30,19 @@ This project is currently in the design phase. To get started:
 aegis/
 ├── design/                 # Design documents and planning
 │   ├── PROJECT_OVERVIEW.md # High-level project description
-│   └── TASK_LIST.md        # Detailed task breakdown and roadmap
-├── src/                    # Source code (coming soon)
-├── tests/                  # Test suite (coming soon)
+│   ├── TASK_LIST.md        # Detailed task breakdown and roadmap
+│   └── DATABASE_SCHEMA.md  # Database design
+├── docs/                   # Operator documentation
+│   └── OPERATOR_GUIDE.md   # Installation and operations guide
+├── src/aegis/              # Source code
+│   ├── asana/             # Asana API client
+│   ├── agents/            # Agent implementations
+│   ├── database/          # Database models and session
+│   ├── orchestrator/      # Orchestration logic
+│   ├── config.py          # Configuration management
+│   └── cli.py             # Command-line interface
+├── tests/                  # Test suite
+├── logs/                   # Execution logs
 └── README.md              # This file
 ```
 
@@ -68,12 +90,18 @@ Aegis orchestrates a swarm of specialized agents to:
 
 ## Current Status
 
-🏗️ **In Design Phase** - Currently defining architecture and building roadmap
+🏗️ **Alpha** - Basic functionality implemented, active development ongoing
 
 ## Documentation
 
+### For Operators
+- [Operator Guide](docs/OPERATOR_GUIDE.md) - Complete installation, configuration, and operations guide
+- [Tools Reference](TOOLS.md) - CLI commands and usage
+
+### For Developers
 - [Project Overview](design/PROJECT_OVERVIEW.md) - Vision, architecture, and system design
 - [Task List](design/TASK_LIST.md) - Detailed implementation roadmap
+- [Database Schema](design/DATABASE_SCHEMA.md) - Database design and models
 
 ## Contributing
 
