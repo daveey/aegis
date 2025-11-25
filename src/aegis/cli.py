@@ -148,8 +148,6 @@ def do(project_name: str) -> None:
         import asana
         import subprocess
         import os
-        from datetime import datetime
-        from pathlib import Path
 
         try:
             settings = get_settings()
@@ -236,145 +234,41 @@ Project: {project['name']}"""
             if first_task.get("notes"):
                 task_context += f"\n\nTask Description:\n{first_task['notes']}"
 
-            # Set up logging
-            logs_dir = Path.cwd() / "logs"
-            logs_dir.mkdir(exist_ok=True)
-            log_file = logs_dir / f"{project_name.lower()}.log"
-
-            timestamp = datetime.now().isoformat()
-            log_header = f"\n{'='*80}\n[{timestamp}] Task: {first_task['name']}\n{'='*80}\n\n"
-
             console.print("[bold]Executing task with Claude CLI...[/bold]\n")
-            console.print("[dim]" + "=" * 60 + "[/dim]")
-            console.print(f"[dim]Logging to: {log_file}[/dim]\n")
+            console.print(f"[dim]Task: {first_task['name']}[/dim]")
+            console.print(f"[dim]Working directory: {working_dir or 'current directory'}[/dim]\n")
+            console.print("[dim]" + "=" * 60 + "[/dim]\n")
 
-            # Execute Claude CLI and capture output
+            # Execute Claude CLI - let it run interactively
             # Change to code directory if available
             working_dir = code_path if code_path and os.path.isdir(code_path) else None
 
             try:
+                # Run claude interactively (no output capture)
                 result = subprocess.run(
-                    [
-                        "claude",
-                        "--dangerously-skip-permissions",
-                        task_context,
-                    ],
+                    ["claude", "--dangerously-skip-permissions", task_context],
                     cwd=working_dir,
                     check=False,
-                    text=True,
-                    capture_output=True,
                 )
 
-                # Combine stdout and stderr
-                output = result.stdout
-                if result.stderr:
-                    output += f"\n\nSTDERR:\n{result.stderr}"
-
-                # Write to log file
-                try:
-                    with open(log_file, "a") as f:
-                        f.write(log_header)
-                        f.write(output)
-                        f.write(f"\n\nExit code: {result.returncode}\n")
-                except Exception as e:
-                    console.print(f"[yellow]⚠[/yellow] Failed to write to log file: {e}")
-
-                console.print("[dim]" + "=" * 60 + "[/dim]\n")
+                console.print("\n" + "[dim]" + "=" * 60 + "[/dim]\n")
 
                 if result.returncode == 0:
-                    console.print("[bold green]✓ Task execution completed[/bold green]")
-
-                    # Post comment to Asana task
-                    console.print("Posting results to Asana...")
-
-                    # Create a summary comment
-                    comment_text = f"""✓ Task completed via Aegis
-
-**Timestamp**: {timestamp}
-
-**Output**:
-```
-{output[:60000] if output else '(No output captured)'}
-```
-
-**Log file**: `{log_file}`
-"""
-
-                    comment_data = {
-                        "data": {
-                            "text": comment_text,
-                        }
-                    }
-
-                    try:
-                        await post_asana_comment(stories_api, comment_data, first_task["gid"])
-                        console.print("[green]✓[/green] Comment posted to Asana task\n")
-                    except Exception as e:
-                        console.print(f"[yellow]⚠[/yellow] Failed to post comment to Asana: {e}")
-                        console.print("[dim]Task completed but comment not posted[/dim]\n")
-
+                    console.print("[bold green]✓ Task execution completed[/bold green]\n")
                 else:
                     console.print(
-                        f"[yellow]Claude CLI exited with code {result.returncode}[/yellow]"
+                        f"[yellow]Claude CLI exited with code {result.returncode}[/yellow]\n"
                     )
 
-                    # Still post a comment about the failure
-                    comment_text = f"""⚠️ Task execution completed with errors (exit code {result.returncode})
-
-**Timestamp**: {timestamp}
-
-**Output**:
-```
-{output[:60000] if output else '(No output captured)'}
-```
-
-**Log file**: `{log_file}`
-"""
-
-                    comment_data = {
-                        "data": {
-                            "text": comment_text,
-                        }
-                    }
-
-                    try:
-                        await post_asana_comment(stories_api, comment_data, first_task["gid"])
-                        console.print("[yellow]⚠[/yellow] Comment posted to Asana task\n")
-                    except Exception as e:
-                        console.print(f"[yellow]⚠[/yellow] Failed to post comment to Asana: {e}")
-                        console.print("[dim]Task failed and comment not posted[/dim]\n")
-
             except FileNotFoundError:
-                error_msg = "Error: 'claude' CLI not found. Please install it first."
-                console.print(f"[red]{error_msg}[/red]")
-                console.print("Install with: npm install -g @anthropic-ai/claude-cli")
-
-                # Try to log the error
-                try:
-                    with open(log_file, "a") as f:
-                        f.write(log_header)
-                        f.write(f"ERROR: {error_msg}\n")
-                except Exception:
-                    pass  # Best effort logging
-
+                console.print("[red]Error: 'claude' CLI not found. Please install it first.[/red]")
+                console.print("Install: npm install -g @anthropic-ai/claude-cli\n")
                 sys.exit(1)
 
             except Exception as e:
-                error_msg = f"Unexpected error during task execution: {e}"
-                console.print(f"[red]{error_msg}[/red]")
-
-                # Try to log the error
-                try:
-                    with open(log_file, "a") as f:
-                        f.write(log_header)
-                        f.write(f"ERROR: {error_msg}\n")
-                        import traceback
-                        f.write(traceback.format_exc())
-                except Exception:
-                    pass  # Best effort logging
-
-                # Don't exit - just log and continue
-                console.print("[dim]Error logged. Check log file for details.[/dim]\n")
+                console.print(f"[red]Unexpected error: {e}[/red]\n")
+                import traceback
+                traceback.print_exc()
 
         except Exception as e:
             console.print(f"[red]Critical error: {e}[/red]")
