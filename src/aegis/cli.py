@@ -232,6 +232,7 @@ Project: {project['name']}"""
                         "--dangerously-skip-permissions",
                         "--output-format",
                         "stream-json",
+                        "--verbose",
                         task_context,
                     ],
                     cwd=working_dir,
@@ -280,8 +281,8 @@ Project: {project['name']}"""
 
                     await asyncio.to_thread(
                         stories_api.create_story_for_task,
-                        first_task["gid"],
                         comment_data,
+                        first_task["gid"],
                         {},
                     )
 
@@ -313,8 +314,8 @@ Project: {project['name']}"""
 
                     await asyncio.to_thread(
                         stories_api.create_story_for_task,
-                        first_task["gid"],
                         comment_data,
+                        first_task["gid"],
                         {},
                     )
 
