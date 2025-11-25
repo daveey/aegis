@@ -14,28 +14,16 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+        # Don't try to parse JSON for list fields - let validators handle it
+        env_parse_none_str="",
     )
 
     # Asana Configuration
     asana_access_token: str = Field(..., description="Asana Personal Access Token")
     asana_workspace_gid: str = Field(..., description="Asana Workspace GID")
-    asana_project_gids: list[str] = Field(
-        default_factory=list, description="List of Asana Project GIDs to monitor"
+    asana_portfolio_gid: str = Field(
+        ..., description="Asana Portfolio GID (Aegis portfolio containing projects to monitor)"
     )
-
-    @field_validator("asana_project_gids", mode="before")
-    @classmethod
-    def parse_project_gids(cls, v: Any) -> list[str]:
-        """Parse comma-separated project GIDs from environment variable."""
-        if isinstance(v, str):
-            # Handle empty strings
-            if not v.strip():
-                return []
-            # Split by comma and filter out empty strings
-            return [gid.strip() for gid in v.split(",") if gid.strip()]
-        elif isinstance(v, list):
-            return v
-        return []
 
     # Anthropic Configuration
     anthropic_api_key: str = Field(..., description="Anthropic API Key")

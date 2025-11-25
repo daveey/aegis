@@ -27,7 +27,7 @@ def config() -> None:
         settings = get_settings()
         console.print("[bold]Aegis Configuration[/bold]")
         console.print(f"Asana Workspace: {settings.asana_workspace_gid}")
-        console.print(f"Monitored Projects: {len(settings.asana_project_gids)}")
+        console.print(f"Asana Portfolio: {settings.asana_portfolio_gid}")
         console.print(f"Claude Model: {settings.anthropic_model}")
         console.print(f"Poll Interval: {settings.poll_interval_seconds}s")
         console.print(f"Max Concurrent Tasks: {settings.max_concurrent_tasks}")
@@ -48,48 +48,57 @@ def start() -> None:
 
 
 @main.command()
-@click.option("--project-gid", help="Asana project GID to test (uses config if not provided)")
-def test_asana(project_gid: str | None) -> None:
-    """Test Asana API connection."""
+def test_asana() -> None:
+    """Test Asana API connection and list portfolio projects."""
 
     async def _test() -> None:
-        from aegis.asana import AsanaClient
+        import asana
 
         try:
             settings = get_settings()
-            test_project_gid = project_gid or (
-                settings.asana_project_gids[0] if settings.asana_project_gids else None
+            portfolio_gid = settings.asana_portfolio_gid
+
+            console.print(f"[bold]Testing Asana connection to portfolio: {portfolio_gid}[/bold]\n")
+
+            # Configure API client
+            configuration = asana.Configuration()
+            configuration.access_token = settings.asana_access_token
+            api_client = asana.ApiClient(configuration)
+            portfolios_api = asana.PortfoliosApi(api_client)
+
+            # Test fetching portfolio
+            console.print("Fetching portfolio details...")
+            portfolio_dict = await asyncio.to_thread(
+                portfolios_api.get_portfolio, portfolio_gid, {"opt_fields": "name"}
             )
+            console.print(f"[green]✓[/green] Portfolio: {portfolio_dict['name']}\n")
 
-            if not test_project_gid:
-                console.print("[red]No project GID provided or found in config[/red]")
-                sys.exit(1)
+            # Get projects in portfolio
+            console.print("Fetching projects in portfolio...")
+            projects_generator = await asyncio.to_thread(
+                portfolios_api.get_items_for_portfolio, portfolio_gid, {"opt_fields": "name,gid"}
+            )
+            projects_list = list(projects_generator)
 
-            console.print(f"[bold]Testing Asana connection to project: {test_project_gid}[/bold]")
-
-            client = AsanaClient(settings.asana_access_token)
-
-            # Test fetching project
-            console.print("Fetching project details...")
-            project = await client.get_project(test_project_gid)
-            console.print(f"[green]✓[/green] Project: {project.name}")
-
-            # Test fetching tasks
-            console.print("Fetching tasks...")
-            tasks = await client.get_tasks_from_project(test_project_gid)
-            console.print(f"[green]✓[/green] Found {len(tasks)} tasks")
-
-            if tasks:
-                console.print(f"\nFirst task: {tasks[0].name}")
-                console.print(f"  Status: {'Complete' if tasks[0].completed else 'Incomplete'}")
+            if projects_list:
+                console.print(f"[green]✓[/green] Found {len(projects_list)} projects\n")
+                console.print("First 5 projects:")
+                for project_dict in projects_list[:5]:
+                    console.print(f"  - {project_dict['name']} (GID: {project_dict['gid']})")
+            else:
+                console.print("[yellow]No projects in portfolio yet[/yellow]")
                 console.print(
-                    f"  Assignee: {tasks[0].assignee.name if tasks[0].assignee else 'Unassigned'}"
+                    "\nAdd projects to portfolio at: "
+                    f"https://app.asana.com/0/portfolio/{portfolio_gid}"
                 )
 
             console.print("\n[bold green]Asana API connection successful![/bold green]")
 
         except Exception as e:
             console.print(f"[red]Error testing Asana connection: {e}[/red]")
+            import traceback
+
+            traceback.print_exc()
             sys.exit(1)
 
     asyncio.run(_test())
