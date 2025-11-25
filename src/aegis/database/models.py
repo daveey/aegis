@@ -141,7 +141,7 @@ class TaskExecution(Base, TimestampMixin):
 
     # Context
     context = Column(JSON, default=dict)
-    metadata = Column(JSON, default=dict)
+    execution_metadata = Column(JSON, default=dict)
 
     # Relationships
     task = relationship("Task", back_populates="executions")

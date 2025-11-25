@@ -38,6 +38,45 @@ Aegis is an intelligent assistant orchestration system that uses Asana as a cont
 - **Cache:** Redis (optional, for performance)
 - **Vector DB:** Qdrant (optional, for advanced features)
 
+### Quick Start Checklist
+
+Get up and running in 5 steps:
+
+1. **Install Prerequisites**
+   - [ ] Python 3.11+ installed
+   - [ ] Claude CLI installed: `npm install -g @anthropic-ai/claude-cli`
+   - [ ] Get Asana Personal Access Token
+   - [ ] Get Anthropic API Key
+
+2. **Install Aegis**
+   ```bash
+   git clone <repo-url> && cd aegis
+   python3 -m venv .venv && source .venv/bin/activate
+   pip install -e .
+   ```
+
+3. **Configure**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your credentials
+   aegis config  # Verify
+   ```
+
+4. **Test Connections**
+   ```bash
+   aegis test-asana   # Test Asana API
+   aegis test-claude  # Test Claude API
+   ```
+
+5. **Run Your First Task**
+   ```bash
+   aegis do <project_name>
+   # Or for autonomous multi-task execution:
+   aegis work-on <project_name>
+   ```
+
+Continue reading for detailed installation and configuration instructions.
+
 ---
 
 ## Prerequisites
@@ -221,11 +260,104 @@ This will display your current configuration (with sensitive values masked).
 
 ## Database Setup
 
-### PostgreSQL Setup (Optional)
+You can set up databases either manually or using Docker Compose.
+
+### Option 1: Docker Compose (Recommended)
+
+Easiest way to run all optional services:
+
+#### 1. Create docker-compose.yml
+
+The project includes a ready-to-use `docker-compose.yml` file:
+
+```yaml
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: aegis-postgres
+    environment:
+      POSTGRES_USER: aegis
+      POSTGRES_PASSWORD: aegis_dev_password
+      POSTGRES_DB: aegis
+    ports:
+      - "5432:5432"
+    volumes:
+      - aegis_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aegis -d aegis"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: aegis-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - aegis_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  aegis_postgres_data:
+  aegis_redis_data:
+```
+
+#### 2. Start Services
+
+```bash
+# Start all services
+docker compose up -d
+
+# Check status
+docker compose ps
+
+# View logs
+docker compose logs -f
+```
+
+#### 3. Run Migrations
+
+```bash
+# Initialize database schema
+alembic upgrade head
+```
+
+#### 4. Update .env
+
+Update your `.env` file to use the Docker Compose credentials:
+
+```bash
+DATABASE_URL=postgresql://aegis:aegis_dev_password@localhost:5432/aegis
+REDIS_URL=redis://localhost:6379
+```
+
+**Note:** The docker-compose.yml file does not include Qdrant by default. If you need vector database features, you can add a Qdrant service or run it separately.
+
+#### 5. Stop Services
+
+```bash
+# Stop but keep data
+docker compose stop
+
+# Stop and remove (keeps volumes)
+docker compose down
+
+# Remove everything including data
+docker compose down -v
+```
+
+### Option 2: Manual Setup
+
+#### PostgreSQL Setup (Optional)
 
 If you want persistent state management:
 
-#### 1. Create Database
+**1. Create Database**
 
 ```bash
 # Create the database
@@ -235,34 +367,37 @@ createdb aegis
 psql -c "CREATE DATABASE aegis;"
 ```
 
-#### 2. Run Migrations
+**2. Run Migrations**
 
 ```bash
 # Initialize alembic (if not already done)
 alembic upgrade head
 ```
 
-#### 3. Verify Database
+**3. Verify Database**
 
 ```bash
 psql aegis -c "\dt"
 # Should show tables: tasks, agents, executions, etc.
 ```
 
-### Redis Setup (Optional)
+#### Redis Setup (Optional)
 
 If you want caching:
 
 ```bash
-# Start Redis
-redis-server
+# macOS
+brew services start redis
+
+# Ubuntu/Debian
+sudo systemctl start redis-server
 
 # Verify connection
 redis-cli ping
 # Should return: PONG
 ```
 
-### Qdrant Setup (Optional)
+#### Qdrant Setup (Optional)
 
 If you want vector database features:
 
@@ -278,9 +413,39 @@ curl http://localhost:6333/collections
 
 ## Running Aegis
 
-### Test Asana Connection
+### CLI Command Reference
 
-Before running the orchestrator, verify your Asana configuration:
+Aegis provides several commands for managing and executing tasks:
+
+```bash
+aegis --version              # Show version
+aegis --help                 # Show help
+aegis config                 # Display configuration
+aegis test-asana            # Test Asana API connection
+aegis test-claude           # Test Claude API connection
+aegis do <project>          # Execute first task from project
+aegis work-on <project>     # Autonomous multi-task execution
+aegis start                 # Start orchestrator (coming soon)
+```
+
+**Quick Reference:**
+
+| Command | Purpose | Use Case | Status |
+|---------|---------|----------|--------|
+| `config` | View settings | Verify configuration before running | ✅ Ready |
+| `test-asana` | Test Asana connection | Validate credentials and portfolio | ✅ Ready |
+| `test-claude` | Test Claude API | Validate Anthropic API access | ⚠️ Not yet implemented |
+| `do` | Execute one task | Quick single-task execution | ✅ Ready |
+| `work-on` | Execute multiple tasks | Autonomous project progression | ✅ Ready |
+| `start` | Run orchestrator loop | Continuous monitoring | ⚠️ Not yet implemented |
+
+See [TOOLS.md](../TOOLS.md) for detailed command documentation.
+
+### Test Connections
+
+Before running the orchestrator, verify your configuration:
+
+#### Test Asana Connection
 
 ```bash
 aegis test-asana
@@ -309,6 +474,22 @@ First 5 projects:
 
 Asana API connection successful!
 ```
+
+#### Test Claude API Connection
+
+```bash
+aegis test-claude
+```
+
+**Current Status:** This command is not yet fully implemented. You will see:
+```
+Testing Claude API connection...
+Note: Claude client not yet implemented
+```
+
+For now, you can verify Claude API access by:
+1. Running `aegis do <project>` on a test task
+2. Or testing the Claude CLI directly: `echo "Hello" | claude`
 
 ### Execute a Single Task
 
@@ -358,6 +539,101 @@ Posting results to Asana...
 
 ✓ Task execution completed
 ```
+
+### Autonomous Work on a Project
+
+For more intelligent, autonomous execution that handles dependencies and blockers:
+
+```bash
+aegis work-on <project_name> [--max-tasks N] [--dry-run]
+```
+
+**Example:**
+```bash
+# Work autonomously on Aegis project
+aegis work-on Aegis
+
+# Limit to 3 tasks in this session
+aegis work-on Aegis --max-tasks 3
+
+# Preview what would be done without executing
+aegis work-on Aegis --dry-run
+```
+
+**What happens:**
+1. Fetches all incomplete unassigned tasks from the project
+2. Analyzes task descriptions for dependencies and blockers
+3. Checks environment prerequisites (PostgreSQL, Redis, etc.)
+4. Creates question tasks for blockers (assigned to portfolio owner)
+5. Identifies ready tasks with no blockers
+6. Executes multiple ready tasks (up to `--max-tasks` limit)
+7. Reports comprehensive session summary
+
+**Key Features:**
+- **Dependency Detection**: Parses task descriptions for "Dependencies:", "Depends on:", "Blocked by:"
+- **Environment Checks**: Verifies required services are running
+- **Intelligent Question Creation**: Auto-creates tasks with multiple options when blocked
+- **Multi-Task Execution**: Processes multiple ready tasks in one session
+- **Smart Task Selection**: Only executes tasks with no blockers
+
+**Output:**
+```
+Analyzing Aegis project...
+✓ Found 17 incomplete unassigned tasks
+
+Assessing project state...
+⚠ Blocked tasks: 5
+  • Set up PostgreSQL database
+    Reason: Requires PostgreSQL (container not running)
+  • Configure Alembic migrations
+    Reason: Has explicit dependencies in description
+
+? Questions to create: 1
+  • PostgreSQL Setup
+
+✓ Ready tasks: 12
+  • Design base Agent class
+  • Implement Anthropic API client wrapper
+  • Create prompt templates for SimpleExecutor
+  • Build SimpleExecutor agent
+  • Implement task response formatter
+
+Creating question tasks...
+  ✓ Created: Question: PostgreSQL Setup (GID: 1234567890)
+
+Executing 5 ready task(s)...
+
+[1/5] Design base Agent class
+  Working directory: /Users/daveey/code/aegis
+  ✓ Completed
+
+[2/5] Implement Anthropic API client wrapper
+  Working directory: /Users/daveey/code/aegis
+  ✓ Completed
+
+...
+
+============================================================
+Session Summary
+  ✓ Completed: 5 tasks
+  ⚠ Blocked: 5 tasks
+  ? Questions: 1 created
+
+Log: /Users/daveey/code/aegis/logs/aegis.log
+============================================================
+```
+
+**When to Use:**
+
+| Use `aegis do` | Use `aegis work-on` |
+|----------------|---------------------|
+| Single task execution | Autonomous multi-task execution |
+| No dependency checking | Full dependency analysis |
+| Quick, simple execution | Strategic project progression |
+| Manual task selection | Intelligent task selection |
+| No question creation | Auto-creates questions for blockers |
+
+See [TOOLS.md](../TOOLS.md) for detailed command comparison and design documentation.
 
 ### Start the Orchestrator (Coming Soon)
 
@@ -430,16 +706,27 @@ All task executions post results to Asana as comments:
 - [ ] Check configuration: `aegis config`
 - [ ] Test Asana connection: `aegis test-asana`
 - [ ] Verify Claude CLI works: `claude --version`
+- [ ] Check disk space for logs: `df -h .`
+- [ ] Verify working directory exists: Check project notes in Asana
 
 **During Execution:**
 - [ ] Monitor console output for errors
 - [ ] Watch log files: `tail -f logs/*.log`
-- [ ] Check Asana for task updates
+- [ ] Check Asana for task updates and comments
+- [ ] Monitor API credit usage at console.anthropic.com
+- [ ] Watch for network connectivity issues
 
 **After Execution:**
 - [ ] Review exit codes in logs
 - [ ] Check Asana comments for completion status
-- [ ] Verify task outputs/deliverables
+- [ ] Verify task outputs/deliverables in working directory
+- [ ] Check for any partial completions or errors
+- [ ] Review log file size: `ls -lh logs/`
+
+**Weekly Maintenance:**
+- [ ] Archive old logs (see Maintenance section)
+- [ ] Review API usage and costs
+- [ ] Check for Aegis updates: `git pull && pip install -U -e .`
 
 ---
 
@@ -589,6 +876,161 @@ echo $ANTHROPIC_API_KEY
 # Check API credits at console.anthropic.com
 ```
 
+#### 7. "No ready tasks found" (aegis work-on)
+
+**Symptom:**
+```
+⚠ Blocked tasks: 15
+✓ Ready tasks: 0
+
+No ready tasks to execute.
+```
+
+**Cause:** All tasks have blockers or dependencies
+
+**Solution:**
+```bash
+# Run in dry-run mode to see what's blocked
+aegis work-on <project> --dry-run
+
+# Check for questions created in Asana
+# Answer questions to unblock tasks
+
+# Common blockers:
+# - Missing PostgreSQL/Redis/Docker
+# - Explicit dependencies in task descriptions
+# - Environment prerequisites
+
+# Start required services
+brew services start postgresql@16
+brew services start redis
+
+# Or use Docker
+docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=postgres postgres:16
+```
+
+#### 8. "Too many tasks in session" (aegis work-on)
+
+**Symptom:**
+```
+Executing 15 ready task(s)...
+```
+
+**Cause:** Default max-tasks is 5, but more tasks are ready
+
+**Solution:**
+```bash
+# Limit tasks per session
+aegis work-on <project> --max-tasks 3
+
+# Or increase the limit
+aegis work-on <project> --max-tasks 10
+
+# Run multiple sessions for large batches
+for i in {1..3}; do
+  aegis work-on <project> --max-tasks 5
+done
+```
+
+#### 9. "Question task already exists"
+
+**Symptom:**
+```
+⚠ Question already exists for this blocker
+```
+
+**Cause:** work-on detected same blocker in previous run
+
+**Solution:**
+```bash
+# Answer the existing question in Asana
+# Check project for tasks starting with "Question:"
+
+# Or delete duplicate questions manually
+
+# Re-run work-on after answering
+aegis work-on <project>
+```
+
+#### 10. "Docker not found" (aegis work-on)
+
+**Symptom:**
+```
+Error: 'docker' command not found
+```
+
+**Cause:** Docker CLI not installed or not in PATH (work-on uses docker to check service status)
+
+**Solution:**
+```bash
+# Install Docker Desktop from https://docker.com
+
+# Or ignore - this just prevents environment checks
+# Tasks will still run, but blocker detection may miss some issues
+```
+
+#### 11. "Connection timeout" when posting to Asana
+
+**Symptom:**
+```
+⚠ Failed to post comment: Connection timeout
+```
+
+**Cause:** Network issues or Asana API rate limiting
+
+**Solution:**
+- The command has built-in retry logic (3 attempts with exponential backoff)
+- Task execution still completes successfully
+- Comment will be in log file even if Asana post fails
+- Check network connection
+- Check Asana API status at https://status.asana.com
+- Rate limit: 1500 requests/minute per token (rarely hit in normal use)
+
+#### 12. "Invalid code location path"
+
+**Symptom:**
+Task executes in wrong directory or current directory instead of project directory
+
+**Cause:** Code Location in Asana project notes is missing or incorrect
+
+**Solution:**
+```bash
+# In Asana, edit project description (notes) to include:
+Code Location: /absolute/path/to/your/project
+
+# Example:
+Code Location: /Users/username/code/myproject
+
+# The path must:
+# - Be absolute (not relative)
+# - Exist on your filesystem
+# - Be readable/writable by the user running aegis
+```
+
+#### 13. "Alembic migrations fail"
+
+**Symptom:**
+```
+alembic.util.exc.CommandError: Can't locate revision identified by 'head'
+```
+
+**Cause:** Database schema not initialized or alembic directory missing
+
+**Solution:**
+```bash
+# Check if alembic directory exists
+ls alembic/
+
+# If missing, initialize alembic
+alembic init alembic
+
+# If exists, check for migrations
+ls alembic/versions/
+
+# If no migrations exist yet, that's normal for fresh install
+# Database features are optional
+```
+
 ### Debug Mode
 
 Enable detailed logging:
@@ -718,14 +1160,14 @@ To use different Claude models:
 
 ```bash
 # In .env
-ANTHROPIC_MODEL=claude-opus-4-20250514
+ANTHROPIC_MODEL=claude-opus-4-5-20251101
 ANTHROPIC_MAX_TOKENS=8192
 ```
 
 Available models:
-- `claude-sonnet-4-5-20250929` (default, balanced)
-- `claude-opus-4-20250514` (most capable)
-- `claude-haiku-3-5-20241022` (fastest, economical)
+- `claude-opus-4-5-20251101` (most capable)
+- `claude-sonnet-4-5-20250929` (balanced performance and cost, default)
+- `claude-haiku-3-5-20241022` (fastest, most economical)
 
 ---
 
@@ -828,6 +1270,84 @@ ANTHROPIC_MAX_TOKENS=2048
 
 ---
 
+## Operational Tips
+
+### Best Practices for Running Aegis
+
+1. **Start Small**
+   - Begin with simple tasks to verify your setup
+   - Use `aegis do` for first few tasks before trying `aegis work-on`
+   - Test with a single project before scaling to multiple
+
+2. **Task Organization in Asana**
+   - Keep task descriptions clear and specific
+   - Include any relevant context, requirements, or constraints
+   - Use Asana's task dependencies feature to show relationships
+   - Add "Dependencies:" section in task notes for explicit blocking
+
+3. **Monitoring Execution**
+   - Always check the log files after execution
+   - Review Asana comments to verify results were posted
+   - Keep logs directory under version control exclusion (`.gitignore`)
+   - Set up log rotation if running frequently
+
+4. **Managing API Costs**
+   - Default model (Sonnet) balances cost and performance
+   - Monitor usage at console.anthropic.com
+   - Use `--max-tasks` flag to limit work-on sessions
+   - Consider using `--dry-run` first to preview what will execute
+
+5. **Handling Errors**
+   - Don't panic if a task fails - check logs for details
+   - Asana comments capture output even on failures
+   - Failed tasks remain incomplete and can be retried
+   - Use `aegis work-on --dry-run` to diagnose blockers
+
+6. **Working with Multiple Projects**
+   - Create separate portfolios for different environments (dev/staging/prod)
+   - Use consistent "Code Location:" format across projects
+   - Consider using different .env files for different contexts
+   - Run one project at a time to avoid conflicts
+
+7. **Development Workflow**
+   - Keep your working directories clean (git status before/after)
+   - Review Claude's changes before committing
+   - Use meaningful task names in Asana that describe the outcome
+   - Break large features into smaller, atomic tasks
+
+### Common Patterns
+
+**Pattern: Progressive Task Refinement**
+1. Create high-level task in Asana
+2. Run `aegis do <project>` to get initial implementation
+3. Review output and create follow-up tasks for improvements
+4. Iterate until complete
+
+**Pattern: Blocked Task Management**
+1. Run `aegis work-on <project> --dry-run` to see blockers
+2. Answer any questions created in Asana
+3. Resolve blockers (start services, complete dependencies)
+4. Run `aegis work-on <project>` to execute ready tasks
+5. Repeat until project complete
+
+**Pattern: Batch Processing**
+```bash
+# Process multiple projects in sequence
+for project in ProjectA ProjectB ProjectC; do
+  echo "Working on $project..."
+  aegis work-on "$project" --max-tasks 3
+  sleep 10  # Brief pause between projects
+done
+```
+
+**Pattern: Continuous Monitoring** (Future)
+```bash
+# Not yet implemented, but planned:
+aegis start  # Will continuously monitor portfolio and execute tasks
+```
+
+---
+
 ## FAQ
 
 **Q: Can I run multiple Aegis instances simultaneously?**
@@ -866,5 +1386,40 @@ A: Currently only Claude is supported. Other LLMs may be added in future.
 ---
 
 **Last Updated:** 2025-11-25
-**Document Version:** 1.0
+**Document Version:** 1.2
 **Aegis Version:** 0.1.0
+
+## Changelog
+
+### Version 1.2 (2025-11-25)
+- Fixed Docker Compose configuration to match actual docker-compose.yml
+  - Updated PostgreSQL credentials (aegis/aegis_dev_password)
+  - Removed Qdrant from default compose (not in actual file)
+  - Added container names and healthchecks documentation
+- Updated default model to claude-sonnet-4-5-20250929 (matches .env.example)
+- Clarified test-claude command status (not yet implemented)
+- Added Status column to CLI command reference table
+- Added 4 new troubleshooting scenarios (#10-13):
+  - Docker not found error handling
+  - Connection timeout and retry logic
+  - Invalid code location path issues
+  - Alembic migration problems
+- Enhanced monitoring checklist with practical checks
+- Added comprehensive Operational Tips section:
+  - 7 best practices for running Aegis
+  - 4 common workflow patterns
+  - Batch processing example
+- Fixed database URL examples to match actual compose setup
+
+### Version 1.1 (2025-11-25)
+- Added documentation for `aegis work-on` command
+- Added documentation for `aegis test-claude` command
+- Updated Claude model references to latest versions
+- Added Docker Compose setup option for databases
+- Added troubleshooting for `work-on` command scenarios
+- Added CLI command reference table
+- Added Quick Start Checklist
+- Enhanced monitoring checklist with test-claude step
+
+### Version 1.0 (2025-11-25)
+- Initial comprehensive operator guide

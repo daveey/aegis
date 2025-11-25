@@ -1,0 +1,150 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:  # Allow manual triggers
+
+jobs:
+  integration-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: aegis_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[test]"
+
+      - name: Run integration tests (basic)
+        env:
+          ASANA_ACCESS_TOKEN: ${{ secrets.ASANA_TEST_TOKEN }}
+          ASANA_WORKSPACE_GID: ${{ secrets.ASANA_TEST_WORKSPACE }}
+          ASANA_TEST_PROJECT_GID: ${{ secrets.ASANA_TEST_PROJECT }}
+          ASANA_PORTFOLIO_GID: ${{ secrets.ASANA_TEST_PORTFOLIO }}
+          TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/aegis_test
+          TEST_REDIS_URL: redis://localhost:6379/1
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_MODEL: claude-sonnet-4-5-20250929
+        run: |
+          # Run integration tests excluding live API tests
+          pytest tests/integration/ -v --tb=short -m "integration and not live" --maxfail=3
+
+      - name: Run CLI integration tests
+        env:
+          ASANA_ACCESS_TOKEN: ${{ secrets.ASANA_TEST_TOKEN }}
+          ASANA_WORKSPACE_GID: ${{ secrets.ASANA_TEST_WORKSPACE }}
+          ASANA_PORTFOLIO_GID: ${{ secrets.ASANA_TEST_PORTFOLIO }}
+        run: |
+          # Test CLI commands
+          pytest tests/integration/test_e2e.py::TestCLIIntegration -v --tb=short
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: |
+            htmlcov/
+            .pytest_cache/
+          retention-days: 7
+
+      - name: Cleanup test tasks
+        if: always()
+        env:
+          ASANA_ACCESS_TOKEN: ${{ secrets.ASANA_TEST_TOKEN }}
+          ASANA_TEST_PROJECT_GID: ${{ secrets.ASANA_TEST_PROJECT }}
+        run: |
+          # Run cleanup script to remove test tasks
+          python scripts/cleanup_test_tasks.py --project-gid $ASANA_TEST_PROJECT_GID || true
+
+  # Optional: Run live tests with real Claude API (costs money)
+  live-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[run-live-tests]')
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: aegis_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[test]"
+
+      - name: Run live API tests
+        env:
+          ASANA_ACCESS_TOKEN: ${{ secrets.ASANA_TEST_TOKEN }}
+          ASANA_WORKSPACE_GID: ${{ secrets.ASANA_TEST_WORKSPACE }}
+          ASANA_TEST_PROJECT_GID: ${{ secrets.ASANA_TEST_PROJECT }}
+          ASANA_PORTFOLIO_GID: ${{ secrets.ASANA_TEST_PORTFOLIO }}
+          TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/aegis_test
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_MODEL: claude-sonnet-4-5-20250929
+          RUN_LIVE_TESTS: "1"
+        run: |
+          pytest tests/integration/ -v --tb=short -m "live" --maxfail=1
+
+      - name: Cleanup test tasks
+        if: always()
+        env:
+          ASANA_ACCESS_TOKEN: ${{ secrets.ASANA_TEST_TOKEN }}
+          ASANA_TEST_PROJECT_GID: ${{ secrets.ASANA_TEST_PROJECT }}
+        run: |
+          python scripts/cleanup_test_tasks.py --project-gid $ASANA_TEST_PROJECT_GID || true

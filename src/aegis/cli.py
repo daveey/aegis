@@ -10,6 +10,12 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 import asana.rest
 
 from aegis.config import get_settings
+from aegis.utils.shutdown import get_shutdown_handler
+from aegis.database.session import cleanup_db_connections
+from aegis.database.state import (
+    mark_orchestrator_stopped_async,
+    mark_orchestrator_running,
+)
 
 console = Console()
 logger = structlog.get_logger()
@@ -148,6 +154,14 @@ def do(project_name: str) -> None:
         import asana
         import subprocess
         import os
+
+        # Initialize shutdown handler
+        shutdown_handler = get_shutdown_handler(shutdown_timeout=300)
+        shutdown_handler.install_signal_handlers()
+
+        # Register cleanup callbacks
+        shutdown_handler.register_cleanup_callback(mark_orchestrator_stopped_async)
+        shutdown_handler.register_cleanup_callback(cleanup_db_connections)
 
         try:
             settings = get_settings()
@@ -372,9 +386,23 @@ def work_on(project_name: str, max_tasks: int, dry_run: bool) -> None:
         from datetime import datetime
         from pathlib import Path
 
+        # Initialize shutdown handler
+        shutdown_handler = get_shutdown_handler(shutdown_timeout=300)
+        shutdown_handler.install_signal_handlers()
+
+        # Register cleanup callbacks
+        shutdown_handler.register_cleanup_callback(mark_orchestrator_stopped_async)
+        shutdown_handler.register_cleanup_callback(cleanup_db_connections)
+
         try:
             settings = get_settings()
             portfolio_gid = settings.asana_portfolio_gid
+
+            # Mark as running (optional, for when full orchestrator is implemented)
+            try:
+                mark_orchestrator_running()
+            except Exception as e:
+                logger.warning("failed_to_mark_running", error=str(e))
 
             console.print(f"[bold]Analyzing {project_name} project...[/bold]")
 
@@ -447,7 +475,13 @@ def work_on(project_name: str, max_tasks: int, dry_run: bool) -> None:
 
             blocked_tasks = []
             ready_tasks = []
-            questions_needed = []
+            questions_needed = {}  # Changed to dict: question_type -> question_details
+
+            # Check if question tasks already exist in project
+            existing_questions = {}  # name -> gid mapping
+            for task in tasks_list:
+                if task.get("name", "").startswith("Question:"):
+                    existing_questions[task["name"]] = task["gid"]
 
             for task in incomplete_unassigned:
                 notes = task.get("notes", "").lower()
@@ -455,10 +489,12 @@ def work_on(project_name: str, max_tasks: int, dry_run: bool) -> None:
                 # Check for blocker keywords
                 is_blocked = False
                 blocker_reason = None
+                blocker_type = None
 
                 if "dependencies:" in notes or "depends on:" in notes or "blocked by:" in notes:
                     is_blocked = True
                     blocker_reason = "Has explicit dependencies in description"
+                    blocker_type = None  # Can't auto-create question for this
                 elif "postgresql" in notes and "set up" in notes:
                     # Check if PostgreSQL is actually available
                     try:
@@ -472,17 +508,35 @@ def work_on(project_name: str, max_tasks: int, dry_run: bool) -> None:
                         if "aegis-postgres" not in result.stdout:
                             is_blocked = True
                             blocker_reason = "Requires PostgreSQL (container not running)"
-                            if task not in [q["task"] for q in questions_needed]:
-                                questions_needed.append({
-                                    "task": task,
+                            blocker_type = "postgresql_setup"
+
+                            # Only add question if it doesn't already exist
+                            question_name = "Question: PostgreSQL Setup"
+                            if blocker_type not in questions_needed and question_name not in existing_questions:
+                                questions_needed[blocker_type] = {
                                     "question": "PostgreSQL Setup",
-                                    "reason": "PostgreSQL database needs to be set up before this task"
-                                })
+                                    "reason": "PostgreSQL database needs to be set up before proceeding",
+                                    "blocked_task_gids": []  # Track which tasks are blocked by this
+                                }
+
+                            # Track this task as blocked by this question
+                            if blocker_type in questions_needed:
+                                questions_needed[blocker_type]["blocked_task_gids"].append(task["gid"])
+                            elif question_name in existing_questions:
+                                # Question already exists, we'll need to add dependency
+                                if blocker_type not in questions_needed:
+                                    questions_needed[blocker_type] = {
+                                        "question": "PostgreSQL Setup",
+                                        "task_gid": existing_questions[question_name],
+                                        "blocked_task_gids": [task["gid"]]
+                                    }
+                                else:
+                                    questions_needed[blocker_type]["blocked_task_gids"].append(task["gid"])
                     except Exception:
                         pass
 
                 if is_blocked:
-                    blocked_tasks.append({"task": task, "reason": blocker_reason})
+                    blocked_tasks.append({"task": task, "reason": blocker_reason, "blocker_type": blocker_type})
                 else:
                     ready_tasks.append(task)
 
@@ -496,8 +550,8 @@ def work_on(project_name: str, max_tasks: int, dry_run: bool) -> None:
 
             if questions_needed:
                 console.print(f"\n[blue]? Questions to create: {len(questions_needed)}[/blue]")
-                for q in questions_needed:
-                    console.print(f"  • {q['question']}")
+                for q_details in questions_needed.values():
+                    console.print(f"  • {q_details['question']}")
 
             console.print(f"\n[green]✓ Ready tasks: {len(ready_tasks)}[/green]")
             if ready_tasks:
@@ -514,12 +568,12 @@ def work_on(project_name: str, max_tasks: int, dry_run: bool) -> None:
                 me = await asyncio.to_thread(users_api.get_user, "me", {})
                 me_gid = me["gid"]
 
-                for q in questions_needed:
+                for q_type, q_details in questions_needed.items():
                     question_text = f"""**From**: Claude (Aegis Autonomous Agent)
 **Context**: Working on project assessment
-**Blocker**: {q['reason']}
+**Blocker**: {q_details['reason']}
 
-## Question: {q['question']}
+## Question: {q_details['question']}
 
 This task requires setup that isn't complete yet. Please choose how to proceed:
 
@@ -542,7 +596,7 @@ Reply with your choice (1 or 2) and I'll proceed accordingly.
 
                     question_task_data = {
                         "data": {
-                            "name": f"Question: {q['question']}",
+                            "name": f"Question: {q_details['question']}",
                             "notes": question_text,
                             "projects": [project["gid"]],
                             "assignee": me_gid,
@@ -555,6 +609,30 @@ Reply with your choice (1 or 2) and I'll proceed accordingly.
                         {"opt_fields": "name,gid"}
                     )
                     console.print(f"  ✓ Created: {result['name']} (GID: {result['gid']})")
+
+                    # Store question task GID for dependency tracking
+                    q_details["task_gid"] = result["gid"]
+
+                # Now create dependencies for all blocked tasks
+                console.print(f"\n[bold]Creating Asana dependencies...[/bold]")
+                for q_type, q_details in questions_needed.items():
+                    if "task_gid" in q_details and "blocked_task_gids" in q_details:
+                        question_gid = q_details["task_gid"]
+                        for blocked_task_gid in q_details["blocked_task_gids"]:
+                            try:
+                                # Add dependency: blocked_task depends on question_task
+                                await asyncio.to_thread(
+                                    tasks_api.add_dependencies_for_task,
+                                    {"data": {"dependencies": [question_gid]}},
+                                    blocked_task_gid,
+                                    {}
+                                )
+                                console.print(f"  ✓ Made task {blocked_task_gid[:8]}... depend on question")
+                            except Exception as e:
+                                logger.warning("failed_to_create_dependency",
+                                             task_gid=blocked_task_gid,
+                                             question_gid=question_gid,
+                                             error=str(e))
 
             # Execute ready tasks (up to max_tasks)
             if ready_tasks:
@@ -571,6 +649,12 @@ Reply with your choice (1 or 2) and I'll proceed accordingly.
                 failed_count = 0
 
                 for idx, task in enumerate(tasks_to_execute, 1):
+                    # Check for shutdown request before starting new task
+                    if shutdown_handler.shutdown_requested:
+                        console.print(f"\n[yellow]⚠ Shutdown requested, stopping after {completed_count} tasks[/yellow]")
+                        logger.info("shutdown_requested_stopping_execution", completed=completed_count)
+                        break
+
                     console.print(f"[bold][{idx}/{len(tasks_to_execute)}] {task['name']}[/bold]")
                     console.print(f"  Working directory: {working_dir or 'current directory'}")
 
@@ -659,9 +743,20 @@ Project: {project['name']}"""
             console.print(f"[red]Error: {e}[/red]")
             import traceback
             traceback.print_exc()
-            sys.exit(1)
+        finally:
+            # Always run shutdown sequence
+            try:
+                await shutdown_handler.shutdown()
+                console.print("\n[dim]Shutdown complete[/dim]")
+            except Exception as e:
+                logger.error("shutdown_failed", error=str(e), exc_info=True)
+                console.print(f"[red]Warning: Shutdown encountered errors: {e}[/red]")
 
-    asyncio.run(_work_on())
+    try:
+        asyncio.run(_work_on())
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Interrupted by user[/yellow]")
+        sys.exit(130)  # Standard exit code for SIGINT
 
 
 if __name__ == "__main__":

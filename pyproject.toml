@@ -50,6 +50,13 @@ dev = [
     "ipython>=8.20.0",
     "ipdb>=0.13.13",
 ]
+test = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.12.0",
+    "pytest-xdist>=3.5.0",  # Parallel test execution
+]
 
 [project.scripts]
 aegis = "aegis.cli:main"
@@ -119,3 +126,8 @@ addopts = [
     "--cov-report=html",
 ]
 asyncio_mode = "auto"
+markers = [
+    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "live: marks tests that require live API calls (deselect with '-m \"not live\"')",
+]

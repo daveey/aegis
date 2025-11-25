@@ -5,23 +5,31 @@ from typing import Generator
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.engine import Engine
+import structlog
 
 from aegis.config import get_settings
 
-# Global session factory
+logger = structlog.get_logger(__name__)
+
+# Global session factory and engine
 _session_factory: sessionmaker | None = None
+_engine: Engine | None = None
 
 
 def get_engine():
     """Get or create database engine."""
-    settings = get_settings()
-    return create_engine(
-        settings.database_url,
-        pool_size=5,
-        max_overflow=10,
-        pool_pre_ping=True,  # Verify connections before using
-        echo=False,  # Set to True for SQL logging during development
-    )
+    global _engine
+    if _engine is None:
+        settings = get_settings()
+        _engine = create_engine(
+            settings.database_url,
+            pool_size=5,
+            max_overflow=10,
+            pool_pre_ping=True,  # Verify connections before using
+            echo=False,  # Set to True for SQL logging during development
+        )
+    return _engine
 
 
 def init_db() -> None:
@@ -76,3 +84,29 @@ def get_db() -> Session:
     """
     factory = get_session_factory()
     return factory()
+
+
+def cleanup_db_connections() -> None:
+    """Clean up database connections and dispose of engine.
+
+    This should be called during shutdown to ensure all database
+    connections are properly closed.
+    """
+    global _session_factory, _engine
+
+    logger.info("cleaning_up_database_connections")
+
+    try:
+        # Dispose of the engine, which closes all connections in the pool
+        if _engine is not None:
+            logger.debug("disposing_database_engine")
+            _engine.dispose()
+            logger.info("database_engine_disposed")
+            _engine = None
+
+        # Clear session factory
+        _session_factory = None
+
+    except Exception as e:
+        logger.error("database_cleanup_failed", error=str(e), exc_info=True)
+        raise
