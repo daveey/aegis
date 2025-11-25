@@ -1,6 +1,8 @@
 """Configuration management for Aegis."""
 
-from pydantic import Field
+from typing import Any
+
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,6 +22,20 @@ class Settings(BaseSettings):
     asana_project_gids: list[str] = Field(
         default_factory=list, description="List of Asana Project GIDs to monitor"
     )
+
+    @field_validator("asana_project_gids", mode="before")
+    @classmethod
+    def parse_project_gids(cls, v: Any) -> list[str]:
+        """Parse comma-separated project GIDs from environment variable."""
+        if isinstance(v, str):
+            # Handle empty strings
+            if not v.strip():
+                return []
+            # Split by comma and filter out empty strings
+            return [gid.strip() for gid in v.split(",") if gid.strip()]
+        elif isinstance(v, list):
+            return v
+        return []
 
     # Anthropic Configuration
     anthropic_api_key: str = Field(..., description="Anthropic API Key")

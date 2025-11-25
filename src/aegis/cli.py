@@ -48,12 +48,51 @@ def start() -> None:
 
 
 @main.command()
-@click.option("--project-gid", required=True, help="Asana project GID to test")
-def test_asana(project_gid: str) -> None:
+@click.option("--project-gid", help="Asana project GID to test (uses config if not provided)")
+def test_asana(project_gid: str | None) -> None:
     """Test Asana API connection."""
-    console.print(f"[bold]Testing Asana connection to project: {project_gid}[/bold]")
-    console.print("[yellow]Note: Asana client not yet implemented[/yellow]")
-    # TODO: Implement Asana client test
+
+    async def _test() -> None:
+        from aegis.asana import AsanaClient
+
+        try:
+            settings = get_settings()
+            test_project_gid = project_gid or (
+                settings.asana_project_gids[0] if settings.asana_project_gids else None
+            )
+
+            if not test_project_gid:
+                console.print("[red]No project GID provided or found in config[/red]")
+                sys.exit(1)
+
+            console.print(f"[bold]Testing Asana connection to project: {test_project_gid}[/bold]")
+
+            client = AsanaClient(settings.asana_access_token)
+
+            # Test fetching project
+            console.print("Fetching project details...")
+            project = await client.get_project(test_project_gid)
+            console.print(f"[green]✓[/green] Project: {project.name}")
+
+            # Test fetching tasks
+            console.print("Fetching tasks...")
+            tasks = await client.get_tasks_from_project(test_project_gid)
+            console.print(f"[green]✓[/green] Found {len(tasks)} tasks")
+
+            if tasks:
+                console.print(f"\nFirst task: {tasks[0].name}")
+                console.print(f"  Status: {'Complete' if tasks[0].completed else 'Incomplete'}")
+                console.print(
+                    f"  Assignee: {tasks[0].assignee.name if tasks[0].assignee else 'Unassigned'}"
+                )
+
+            console.print("\n[bold green]Asana API connection successful![/bold green]")
+
+        except Exception as e:
+            console.print(f"[red]Error testing Asana connection: {e}[/red]")
+            sys.exit(1)
+
+    asyncio.run(_test())
 
 
 @main.command()
