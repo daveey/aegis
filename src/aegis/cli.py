@@ -257,9 +257,6 @@ Project: {project['name']}"""
                     [
                         "claude",
                         "--dangerously-skip-permissions",
-                        "--output-format",
-                        "stream-json",
-                        "--verbose",
                         task_context,
                     ],
                     cwd=working_dir,

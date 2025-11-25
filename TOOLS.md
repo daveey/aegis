@@ -66,8 +66,6 @@ The command is designed to be robust:
 
 The command automatically uses these flags:
 - `--dangerously-skip-permissions` - Bypass permission prompts for automation
-- `--output-format stream-json` - Structured JSON output
-- `--verbose` - Include detailed execution information
 
 ### Integration with Claude Code
 
