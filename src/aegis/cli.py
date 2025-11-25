@@ -243,11 +243,12 @@ Project: {project['name']}"""
             console.print("[dim]" + "=" * 60 + "[/dim]\n")
 
             try:
-                # Run claude interactively (no output capture)
+                # Run claude with stdin from /dev/null to avoid blocking
                 result = subprocess.run(
                     ["claude", "--dangerously-skip-permissions", task_context],
                     cwd=working_dir,
                     check=False,
+                    stdin=subprocess.DEVNULL,
                 )
 
                 console.print("\n" + "[dim]" + "=" * 60 + "[/dim]\n")
