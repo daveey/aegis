@@ -227,7 +227,13 @@ Project: {project['name']}"""
 
             try:
                 result = subprocess.run(
-                    ["claude", task_context],
+                    [
+                        "claude",
+                        "--dangerously-skip-permissions",
+                        "--output-format",
+                        "stream-json",
+                        task_context,
+                    ],
                     cwd=working_dir,
                     check=False,
                     text=True,
