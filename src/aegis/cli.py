@@ -121,6 +121,8 @@ def do(project_name: str) -> None:
         import asana
         import subprocess
         import os
+        from datetime import datetime
+        from pathlib import Path
 
         try:
             settings = get_settings()
@@ -135,6 +137,7 @@ def do(project_name: str) -> None:
             portfolios_api = asana.PortfoliosApi(api_client)
             projects_api = asana.ProjectsApi(api_client)
             tasks_api = asana.TasksApi(api_client)
+            stories_api = asana.StoriesApi(api_client)
 
             # Get projects from portfolio
             projects_generator = await asyncio.to_thread(
@@ -206,10 +209,19 @@ Project: {project['name']}"""
             if first_task.get("notes"):
                 task_context += f"\n\nTask Description:\n{first_task['notes']}"
 
+            # Set up logging
+            logs_dir = Path.cwd() / "logs"
+            logs_dir.mkdir(exist_ok=True)
+            log_file = logs_dir / f"{project_name.lower()}.log"
+
+            timestamp = datetime.now().isoformat()
+            log_header = f"\n{'='*80}\n[{timestamp}] Task: {first_task['name']}\n{'='*80}\n\n"
+
             console.print("[bold]Executing task with Claude CLI...[/bold]\n")
             console.print("[dim]" + "=" * 60 + "[/dim]")
+            console.print(f"[dim]Logging to: {log_file}[/dim]\n")
 
-            # Execute Claude CLI
+            # Execute Claude CLI and capture output
             # Change to code directory if available
             working_dir = code_path if code_path and os.path.isdir(code_path) else None
 
@@ -219,16 +231,88 @@ Project: {project['name']}"""
                     cwd=working_dir,
                     check=False,
                     text=True,
+                    capture_output=True,
                 )
+
+                # Combine stdout and stderr
+                output = result.stdout
+                if result.stderr:
+                    output += f"\n\nSTDERR:\n{result.stderr}"
+
+                # Write to log file
+                with open(log_file, "a") as f:
+                    f.write(log_header)
+                    f.write(output)
+                    f.write(f"\n\nExit code: {result.returncode}\n")
 
                 console.print("[dim]" + "=" * 60 + "[/dim]\n")
 
                 if result.returncode == 0:
                     console.print("[bold green]✓ Task execution completed[/bold green]")
+
+                    # Post comment to Asana task
+                    console.print("Posting results to Asana...")
+
+                    # Create a summary comment
+                    comment_text = f"""✓ Task completed via Aegis
+
+**Timestamp**: {timestamp}
+
+**Output**:
+```
+{output[:60000] if output else '(No output captured)'}
+```
+
+**Log file**: `{log_file}`
+"""
+
+                    comment_data = {
+                        "data": {
+                            "text": comment_text,
+                        }
+                    }
+
+                    await asyncio.to_thread(
+                        stories_api.create_story_for_task,
+                        first_task["gid"],
+                        comment_data,
+                        {},
+                    )
+
+                    console.print("[green]✓[/green] Comment posted to Asana task\n")
+
                 else:
                     console.print(
                         f"[yellow]Claude CLI exited with code {result.returncode}[/yellow]"
                     )
+
+                    # Still post a comment about the failure
+                    comment_text = f"""⚠️ Task execution completed with errors (exit code {result.returncode})
+
+**Timestamp**: {timestamp}
+
+**Output**:
+```
+{output[:60000] if output else '(No output captured)'}
+```
+
+**Log file**: `{log_file}`
+"""
+
+                    comment_data = {
+                        "data": {
+                            "text": comment_text,
+                        }
+                    }
+
+                    await asyncio.to_thread(
+                        stories_api.create_story_for_task,
+                        first_task["gid"],
+                        comment_data,
+                        {},
+                    )
+
+                    console.print("[yellow]⚠[/yellow] Comment posted to Asana task\n")
 
             except FileNotFoundError:
                 console.print(
