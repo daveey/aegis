@@ -31,29 +31,26 @@ aegis do Triptic
 1. **Finds Project**: Searches Aegis portfolio for matching project
 2. **Extracts Code Path**: Reads code location from project notes
 3. **Fetches First Task**: Gets first incomplete task from project
-4. **Executes Task**: Runs Claude CLI with task context in project directory
-5. **Logs Output**: Writes execution log to `logs/{project}.log`
-6. **Posts Comment**: Updates Asana task with execution results
+4. **Executes Task**: Runs Claude CLI interactively with task context in project directory
+5. **Shows Result**: Displays exit code when complete
 
 ### Output
 
-- **Log File**: `logs/{project}.log` - Timestamped execution log with full output
-- **Asana Comment**: Posted to task with summary and log file reference
-- **Console**: Real-time status updates during execution
+- **Console**: Real-time Claude CLI output during execution
+- **Exit Status**: Success or failure indicator after completion
 
 ### Error Handling
 
 The command is designed to be robust:
 
 - **API Retry Logic**: Automatically retries Asana API calls (3 attempts with exponential backoff)
-- **Graceful Degradation**: Continues even if Asana comment posting fails
-- **Best-Effort Logging**: Always attempts to log errors even if main operation fails
-- **No Exit on Error**: Reports errors but doesn't exit process (except for missing Claude CLI)
+- **Graceful Degradation**: Reports errors clearly without crashing
+- **Fatal Errors**: Exits with code 1 only for unrecoverable errors (Claude CLI not found, project not found)
 
 ### Exit Codes
 
-- `0` - Success (task executed, regardless of Claude CLI exit code)
-- `1` - Fatal error (Claude CLI not found, project not found)
+- `0` - Success (task executed and completed)
+- `1` - Fatal error (Claude CLI not found, project not found, or critical failure)
 
 ### Requirements
 
