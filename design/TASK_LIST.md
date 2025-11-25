@@ -10,7 +10,50 @@
 - [ ] Create initial README.md
 - [ ] Set up .gitignore for Python projects
 
-### 2. Asana Integration (Basic)
+### 2. Database Setup & Schema
+- [ ] Install PostgreSQL locally (or use Docker)
+- [ ] Set up Alembic for migrations
+- [ ] Create initial database schema
+  - [ ] Projects table
+  - [ ] Tasks table
+  - [ ] Task executions table
+  - [ ] Agents table
+  - [ ] Agent events table
+  - [ ] Comments table
+  - [ ] Prompt templates table
+  - [ ] System state table
+- [ ] Create SQLAlchemy models
+  - [ ] Base model with common fields (created_at, updated_at)
+  - [ ] Project model
+  - [ ] Task model
+  - [ ] TaskExecution model
+  - [ ] Agent model
+  - [ ] AgentEvent model
+  - [ ] Comment model
+  - [ ] PromptTemplate model
+  - [ ] SystemState model
+- [ ] Create database session management
+  - [ ] Connection pooling configuration
+  - [ ] Session lifecycle (per-request, per-task)
+  - [ ] Transaction handling
+- [ ] Implement basic CRUD operations
+  - [ ] Project CRUD
+  - [ ] Task CRUD
+  - [ ] TaskExecution CRUD
+- [ ] Add database utilities
+  - [ ] Sync utility (fetch from Asana → store in DB)
+  - [ ] Query helpers for common patterns
+- [ ] Write database tests
+  - [ ] Model validation tests
+  - [ ] CRUD operation tests
+  - [ ] Relationship tests
+- [ ] Create database seeding script
+  - [ ] Seed with existing Asana projects (Triptic, Aegis)
+  - [ ] Create sample data for testing
+
+See [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md) for complete schema design.
+
+### 3. Asana Integration (Basic)
 - [ ] Research Asana API capabilities and authentication methods
 - [ ] Create Asana API client wrapper
   - [ ] Authentication (OAuth2 or Personal Access Token)
@@ -23,7 +66,7 @@
 - [ ] Implement error handling and rate limiting
 - [ ] Write unit tests for Asana client
 
-### 3. Task Parser & Processor
+### 4. Task Parser & Processor
 - [ ] Design task instruction parsing strategy
   - [ ] Extract intent from task title
   - [ ] Parse structured information from description
@@ -35,7 +78,7 @@
   - [ ] Attached files and resources
 - [ ] Create task validation and sanity checks
 
-### 4. Single Agent Executor (Claude Integration)
+### 5. Single Agent Executor (Claude Integration)
 - [ ] Set up Anthropic API client
 - [ ] Design base agent class/interface
 - [ ] Implement simple task executor
@@ -47,7 +90,7 @@
 - [ ] Track token usage and costs
 - [ ] Log agent interactions for debugging
 
-### 5. Response Handler & Communication
+### 6. Response Handler & Communication
 - [ ] Format agent output for Asana comments
   - [ ] Markdown formatting
   - [ ] Code blocks and syntax highlighting
@@ -57,7 +100,7 @@
 - [ ] Add ability to ask clarifying questions via comments
 - [ ] Implement status updates (in-progress, completed, blocked)
 
-### 6. Basic Orchestration Loop
+### 7. Basic Orchestration Loop
 - [ ] Create main event loop
 - [ ] Implement task polling mechanism
   - [ ] Fetch new assigned tasks
@@ -67,7 +110,7 @@
 - [ ] Implement basic task prioritization
 - [ ] Add graceful shutdown handling
 
-### 7. Configuration & Deployment
+### 8. Configuration & Deployment
 - [ ] Create configuration system
   - [ ] API keys (Asana, Anthropic)
   - [ ] Target projects/workspaces
@@ -78,7 +121,7 @@
 - [ ] Add logging configuration
 - [ ] Set up monitoring basics (health checks)
 
-### 8. Testing & Documentation
+### 9. Testing & Documentation
 - [ ] Write integration tests for end-to-end flow
 - [ ] Create example Asana tasks for testing
 - [ ] Document API key setup process
@@ -87,7 +130,7 @@
 
 ## Phase 2: Multi-Agent Orchestration
 
-### 9. Agent Framework
+### 10. Agent Framework
 - [ ] Design agent communication protocol
 - [ ] Create specialized agent types
   - [ ] Router Agent (task classification)
@@ -100,7 +143,7 @@
 - [ ] Build inter-agent messaging system
 - [ ] Add agent lifecycle management
 
-### 10. Task Decomposition System
+### 11. Task Decomposition System
 - [ ] Design hierarchical task structure
 - [ ] Implement task breakdown logic
 - [ ] Create subtask generation in Asana
@@ -108,7 +151,7 @@
 - [ ] Add parallel vs sequential execution logic
 - [ ] Implement result aggregation
 
-### 11. Prompt Library
+### 12. Prompt Library
 - [ ] Create prompt management system
 - [ ] Design system prompts for each agent type
 - [ ] Build task-specific prompt templates
@@ -116,7 +159,7 @@
 - [ ] Add prompt versioning
 - [ ] Create prompt testing framework
 
-### 12. State Management
+### 13. State Management (Enhanced)
 - [ ] Design state persistence strategy
 - [ ] Set up PostgreSQL database
   - [ ] Schema for tasks, agents, executions
@@ -127,7 +170,7 @@
 
 ## Phase 3: Intelligence & Knowledge
 
-### 13. Vector Database Integration
+### 14. Vector Database Integration
 - [ ] Evaluate vector DB options (Pinecone, Qdrant, Weaviate)
 - [ ] Set up vector database instance
 - [ ] Design embedding strategy
@@ -137,7 +180,7 @@
 - [ ] Build context retrieval system
 - [ ] Add relevance ranking
 
-### 14. Memory System
+### 15. Memory System
 - [ ] Design conversation memory structure
 - [ ] Implement short-term memory (current task context)
 - [ ] Build long-term memory (historical context)
@@ -145,7 +188,7 @@
 - [ ] Add memory retrieval strategies
 - [ ] Implement forgetting/pruning logic
 
-### 15. Learning & Feedback
+### 16. Learning & Feedback
 - [ ] Design feedback collection mechanism
 - [ ] Implement user feedback parsing (from Asana reactions/comments)
 - [ ] Build feedback storage and analysis
@@ -153,7 +196,7 @@
 - [ ] Implement prompt refinement based on feedback
 - [ ] Add A/B testing for prompt variations
 
-### 16. Advanced Task Features
+### 17. Advanced Task Features
 - [ ] Implement proactive task suggestions
 - [ ] Add task estimation capabilities
 - [ ] Build automatic dependency detection
@@ -163,14 +206,14 @@
 
 ## Phase 4: Production & Scale
 
-### 17. Webhook Integration
+### 18. Webhook Integration
 - [ ] Set up webhook server
 - [ ] Implement Asana webhook handlers
 - [ ] Add webhook verification
 - [ ] Replace polling with real-time updates
 - [ ] Handle webhook failures and replay
 
-### 18. Advanced Orchestration
+### 19. Advanced Orchestration
 - [ ] Implement dynamic agent scaling
 - [ ] Add load balancing across agents
 - [ ] Build agent performance monitoring
@@ -178,7 +221,7 @@
 - [ ] Add agent specialization training
 - [ ] Implement collaborative agent workflows
 
-### 19. Production Infrastructure
+### 20. Production Infrastructure
 - [ ] Containerize application (Docker)
 - [ ] Create Kubernetes manifests
 - [ ] Set up CI/CD pipeline
@@ -186,7 +229,7 @@
 - [ ] Add backup and disaster recovery
 - [ ] Create deployment playbooks
 
-### 20. Monitoring & Observability
+### 21. Monitoring & Observability
 - [ ] Implement structured logging
 - [ ] Set up metrics collection (Prometheus)
 - [ ] Create dashboards (Grafana)
@@ -194,7 +237,7 @@
 - [ ] Implement alerting rules
 - [ ] Build cost tracking and optimization
 
-### 21. Multi-Tenancy & Scale
+### 22. Multi-Tenancy & Scale
 - [ ] Add workspace/user isolation
 - [ ] Implement resource quotas
 - [ ] Build usage billing system
@@ -202,7 +245,7 @@
 - [ ] Create admin interface
 - [ ] Implement rate limiting per user
 
-### 22. Advanced Features
+### 23. Advanced Features
 - [ ] Multi-modal support (images, documents)
 - [ ] Code execution sandbox
 - [ ] External tool integrations (GitHub, Slack, etc.)

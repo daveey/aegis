@@ -97,10 +97,33 @@ Instead of building yet another custom UI or chat interface, Aegis leverages Asa
 - Version control for prompt evolution
 
 ### 5. Data Layer
-- PostgreSQL for structured data (tasks, agents, logs)
-- Vector database (Pinecone/Weaviate) for semantic search
-- Redis for real-time state and caching
-- S3-compatible storage for artifacts
+
+**PostgreSQL** - Primary database for all persistent state:
+- **Projects**: Asana project metadata and code paths
+- **Tasks**: Complete task state, descriptions, status
+- **Task Executions**: Audit trail of all agent processing attempts
+- **Agents**: Agent lifecycle, performance metrics, current state
+- **Agent Events**: Detailed event logs for debugging and analysis
+- **Comments**: Conversation history and context
+- **Prompt Templates**: Versioned agent prompts with performance tracking
+- **System State**: Global orchestrator status and metrics
+- **Webhooks**: Real-time event processing queue (future)
+
+See [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md) for complete schema design.
+
+**Vector Database** (Phase 3+):
+- Qdrant or Pinecone for semantic search
+- Task embeddings for similar task retrieval
+- Agent memory embeddings for context-aware responses
+
+**Redis** (Future):
+- Real-time agent state and coordination
+- Task queue for high-throughput processing
+- Caching layer for frequently accessed data
+
+**Storage**:
+- Local filesystem for artifacts (Phase 1)
+- S3-compatible storage for production (Phase 4)
 
 ### 6. Monitoring & Observability
 - Agent activity logging
