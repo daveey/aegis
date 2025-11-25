@@ -234,14 +234,13 @@ Project: {project['name']}"""
             if first_task.get("notes"):
                 task_context += f"\n\nTask Description:\n{first_task['notes']}"
 
+            # Determine working directory
+            working_dir = code_path if code_path and os.path.isdir(code_path) else None
+
             console.print("[bold]Executing task with Claude CLI...[/bold]\n")
             console.print(f"[dim]Task: {first_task['name']}[/dim]")
             console.print(f"[dim]Working directory: {working_dir or 'current directory'}[/dim]\n")
             console.print("[dim]" + "=" * 60 + "[/dim]\n")
-
-            # Execute Claude CLI - let it run interactively
-            # Change to code directory if available
-            working_dir = code_path if code_path and os.path.isdir(code_path) else None
 
             try:
                 # Run claude interactively (no output capture)
