@@ -2,8 +2,6 @@
 
 from datetime import datetime
 
-import pytest
-
 from aegis.asana.models import (
     AsanaComment,
     AsanaProject,

@@ -8,8 +8,9 @@ import sys
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from aegis.config import get_settings
 import asana
+
+from aegis.config import get_settings
 
 
 async def get_portfolio_info(portfolio_gid: str) -> None:
@@ -44,7 +45,7 @@ async def get_portfolio_info(portfolio_gid: str) -> None:
             return
 
         # Get all projects in the portfolio
-        print(f"\nFetching projects in portfolio...")
+        print("\nFetching projects in portfolio...")
         projects_list = await asyncio.to_thread(
             portfolios_api.get_items_for_portfolio,
             portfolio_gid,

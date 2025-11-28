@@ -20,9 +20,8 @@ Environment Variables Required:
 import asyncio
 import os
 import uuid
+from collections.abc import AsyncGenerator, Generator
 from datetime import datetime, timedelta
-from typing import AsyncGenerator, Generator
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import asana
 import pytest
@@ -32,7 +31,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from aegis.asana.client import AsanaClient
 from aegis.asana.models import AsanaProject, AsanaTask, AsanaTaskUpdate
-from aegis.config import Settings, get_settings
+from aegis.config import Settings
 from aegis.database.models import Base, Comment, Project, Task, TaskExecution
 
 console = Console()
@@ -404,8 +403,7 @@ Please review the task requirements and try again.
         Verifies that tasks can be properly assigned and their status tracked.
         """
         # Get current task state
-        task = await asana_client.get_task(test_task.gid)
-        initial_completed = task.completed
+        await asana_client.get_task(test_task.gid)
 
         # Simulate assignment to Aegis (in real flow, this would be done by user)
         # For now, just verify we can update task status

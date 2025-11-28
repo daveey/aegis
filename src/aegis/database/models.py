@@ -1,6 +1,5 @@
 """SQLAlchemy database models for Aegis."""
 
-from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (

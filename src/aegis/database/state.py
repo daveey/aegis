@@ -2,13 +2,12 @@
 
 import os
 from datetime import datetime
-from typing import Optional
 
 import structlog
 from sqlalchemy.orm import Session
 
 from aegis.database.models import SystemState, TaskExecution
-from aegis.database.session import get_db, get_db_session
+from aegis.database.session import get_db
 
 logger = structlog.get_logger(__name__)
 
@@ -33,8 +32,8 @@ def get_or_create_system_state(session: Session) -> SystemState:
 
 def update_orchestrator_status(
     status: str,
-    pid: Optional[int] = None,
-    session: Optional[Session] = None
+    pid: int | None = None,
+    session: Session | None = None
 ) -> None:
     """Update orchestrator status in database.
 
@@ -73,7 +72,7 @@ def update_orchestrator_status(
             session.close()
 
 
-def mark_orchestrator_stopped(session: Optional[Session] = None) -> None:
+def mark_orchestrator_stopped(session: Session | None = None) -> None:
     """Mark orchestrator as stopped in database.
 
     Args:
@@ -83,7 +82,7 @@ def mark_orchestrator_stopped(session: Optional[Session] = None) -> None:
     logger.info("orchestrator_marked_stopped")
 
 
-def mark_orchestrator_running(session: Optional[Session] = None) -> None:
+def mark_orchestrator_running(session: Session | None = None) -> None:
     """Mark orchestrator as running in database.
 
     Args:
@@ -103,10 +102,10 @@ async def mark_orchestrator_stopped_async() -> None:
 
 
 def update_system_stats(
-    total_tasks_processed: Optional[int] = None,
-    total_tasks_pending: Optional[int] = None,
-    active_agents_count: Optional[int] = None,
-    session: Optional[Session] = None
+    total_tasks_processed: int | None = None,
+    total_tasks_pending: int | None = None,
+    active_agents_count: int | None = None,
+    session: Session | None = None
 ) -> None:
     """Update system statistics in database.
 
@@ -145,7 +144,7 @@ def update_system_stats(
             session.close()
 
 
-def mark_in_progress_tasks_interrupted(session: Optional[Session] = None) -> int:
+def mark_in_progress_tasks_interrupted(session: Session | None = None) -> int:
     """Mark all in-progress task executions as interrupted.
 
     This should be called during shutdown to update the status of tasks

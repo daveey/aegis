@@ -1,0 +1,169 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  integration-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: aegis_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[test]"
+
+      - name: Run unit tests
+        run: |
+          pytest tests/unit -v --cov=aegis --cov-report=xml --cov-report=term
+
+      - name: Run integration tests (basic)
+        env:
+          ASANA_ACCESS_TOKEN: ${{ secrets.ASANA_ACCESS_TOKEN }}
+          ASANA_WORKSPACE_GID: ${{ secrets.ASANA_WORKSPACE_GID }}
+          ASANA_TEST_PROJECT_GID: ${{ secrets.ASANA_TEST_PROJECT_GID }}
+          ASANA_PORTFOLIO_GID: ${{ secrets.ASANA_PORTFOLIO_GID }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/aegis_test
+          TEST_REDIS_URL: redis://localhost:6379/1
+        run: |
+          pytest tests/integration/test_e2e.py::TestEndToEndFlow -v
+          pytest tests/integration/test_e2e.py::TestDatabaseIntegration -v
+          pytest tests/integration/test_e2e.py::TestCLIIntegration -v
+          pytest tests/integration/test_e2e.py::TestOrchestratorWorkflow -v
+
+      - name: Run live API tests (optional)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          ASANA_ACCESS_TOKEN: ${{ secrets.ASANA_ACCESS_TOKEN }}
+          ASANA_WORKSPACE_GID: ${{ secrets.ASANA_WORKSPACE_GID }}
+          ASANA_TEST_PROJECT_GID: ${{ secrets.ASANA_TEST_PROJECT_GID }}
+          ASANA_PORTFOLIO_GID: ${{ secrets.ASANA_PORTFOLIO_GID }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/aegis_test
+          RUN_LIVE_TESTS: '1'
+        run: |
+          pytest tests/integration/test_e2e.py::TestLiveAgentIntegration -v
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        if: success()
+        with:
+          file: ./coverage.xml
+          flags: integration
+          name: aegis-integration
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: |
+            htmlcov/
+            .coverage
+
+      - name: Comment PR with test results
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const testResults = process.env.TEST_RESULTS || 'Test results not available';
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## Integration Test Results\n\n${testResults}`
+            });
+
+  # Separate job for full orchestrator tests (more intensive)
+  full-orchestrator-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    if: github.event_name == 'workflow_dispatch'  # Only run manually
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: aegis_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[test]"
+          npm install -g @anthropic-ai/claude-cli
+
+      - name: Run full orchestrator tests
+        env:
+          ASANA_ACCESS_TOKEN: ${{ secrets.ASANA_ACCESS_TOKEN }}
+          ASANA_WORKSPACE_GID: ${{ secrets.ASANA_WORKSPACE_GID }}
+          ASANA_TEST_PROJECT_GID: ${{ secrets.ASANA_TEST_PROJECT_GID }}
+          ASANA_PORTFOLIO_GID: ${{ secrets.ASANA_PORTFOLIO_GID }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/aegis_test
+          RUN_ORCHESTRATOR_TESTS: '1'
+        run: |
+          pytest tests/integration/test_e2e.py::TestFullOrchestratorFlow -v --timeout=300
+
+      - name: Upload logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: orchestrator-logs
+          path: logs/

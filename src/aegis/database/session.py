@@ -1,12 +1,12 @@
 """Database session management."""
 
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Generator
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.engine import Engine
 import structlog
+from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session, sessionmaker
 
 from aegis.config import get_settings
 

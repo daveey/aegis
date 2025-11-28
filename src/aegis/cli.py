@@ -3,20 +3,21 @@
 import asyncio
 import sys
 
+import asana.rest
 import click
 import structlog
 from rich.console import Console
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
-import asana.rest
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from aegis.config import get_settings
-from aegis.utils.shutdown import get_shutdown_handler
 from aegis.database.session import cleanup_db_connections
 from aegis.database.state import (
-    mark_orchestrator_stopped_async,
-    mark_orchestrator_running,
     mark_in_progress_tasks_interrupted_async,
+    mark_orchestrator_running,
+    mark_orchestrator_stopped_async,
 )
+from aegis.utils.shutdown import get_shutdown_handler
+
 
 class SmartConsole:
     """Console wrapper that can be disabled and falls back to plain print."""
@@ -150,9 +151,9 @@ def launch_in_hyper_terminal(command: list[str], cwd: str | None = None) -> int:
     Returns:
         Exit code from the command
     """
+    import shlex
     import subprocess
     import tempfile
-    import shlex
 
     # Create a temporary script file
     with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
@@ -262,8 +263,8 @@ def sync(projects_only: bool, use_console: bool) -> None:
     console.print("[bold]Starting Asana Sync...[/bold]")
 
     async def _sync() -> None:
-        from aegis.sync.asana_sync import sync_portfolio_projects, sync_project_tasks
         from aegis.asana.client import AsanaClient
+        from aegis.sync.asana_sync import sync_portfolio_projects, sync_project_tasks
 
         try:
             settings = get_settings()
@@ -336,8 +337,9 @@ def start(ctx: click.Context, project: str, use_console: bool, auto_dispatch: bo
     console.print("[bold green]Starting Aegis Orchestrator...[/bold green]")
 
     async def _start() -> None:
-        from aegis.orchestrator.main import Orchestrator
         import asana
+
+        from aegis.orchestrator.main import Orchestrator
 
         try:
             settings = get_settings()
@@ -558,9 +560,10 @@ def do(task_or_project: str, agent_name: str, prompt: str | None, log: str | Non
         return await asyncio.to_thread(api_call, *args, **kwargs)
 
     async def _do() -> None:
-        import asana
-        import subprocess
         import os
+        import subprocess
+
+        import asana
 
         # Initialize shutdown handler
         shutdown_handler = get_shutdown_handler(shutdown_timeout=300)
@@ -716,7 +719,7 @@ Project: {project['name']}"""
                 task_context += f"\nCode Location: {code_path}"
 
             if existing_questions_list:
-                task_context += f"\n\nExisting Question Tasks (DO NOT CREATE DUPLICATES):\n" + "\n".join(f"  - {q}" for q in existing_questions_list)
+                task_context += "\n\nExisting Question Tasks (DO NOT CREATE DUPLICATES):\n" + "\n".join(f"  - {q}" for q in existing_questions_list)
 
             if first_task.get("notes"):
                 task_context += f"\n\nTask Description:\n{first_task['notes']}"
@@ -811,7 +814,7 @@ IMPORTANT: You are running in HEADLESS mode.
                     import time
 
                     def tail_log():
-                        with open(log_file, "r") as f:
+                        with open(log_file) as f:
                             f.seek(0, 2)  # Skip to end
                             while process.poll() is None:
                                 line = f.readline()
@@ -840,14 +843,14 @@ IMPORTANT: You are running in HEADLESS mode.
                         log_file_handle.flush()
 
                         # Read output from log file
-                        with open(log_file, "r") as f:
+                        with open(log_file) as f:
                             output = f.read()
 
                     except subprocess.TimeoutExpired:
                         console.print(f"\n[red]✗ Execution timeout after {timeout} seconds[/red]")
-                        console.print(f"[yellow]Suggestions:[/yellow]")
+                        console.print("[yellow]Suggestions:[/yellow]")
                         console.print(f"  • Increase timeout: --timeout {timeout * 2}")
-                        console.print(f"  • Check if task is too complex for single execution")
+                        console.print("  • Check if task is too complex for single execution")
                         console.print(f"  • Review partial output in log: {log_file}")
 
                         process.kill()
@@ -858,7 +861,7 @@ IMPORTANT: You are running in HEADLESS mode.
                         log_file_handle.flush()
                         success = False
 
-                        with open(log_file, "r") as f:
+                        with open(log_file) as f:
                             output = f.read()
 
                 finally:
@@ -943,9 +946,9 @@ IMPORTANT: You are running in HEADLESS mode.
                                 project["gid"],
                                 section_map["Failed"]
                             )
-                            console.print(f"[yellow]→ Moved to Failed section[/yellow]\n")
+                            console.print("[yellow]→ Moved to Failed section[/yellow]\n")
                         else:
-                            console.print(f"[yellow]⚠ 'Failed' section not found - task left in current section[/yellow]\n")
+                            console.print("[yellow]⚠ 'Failed' section not found - task left in current section[/yellow]\n")
                     except Exception as e:
                         logger.warning("failed_to_move_task", task_gid=first_task["gid"], error=str(e))
                         console.print(f"[yellow]⚠ Could not move to Failed: {e}[/yellow]\n")
@@ -1021,11 +1024,12 @@ def work_on(task_or_project: str, max_tasks: int, dry_run: bool, terminal: bool,
         return await asyncio.to_thread(api_call, *args, **kwargs)
 
     async def _work_on() -> None:
-        import asana
-        import subprocess
         import os
+        import subprocess
         from datetime import datetime
         from pathlib import Path
+
+        import asana
 
         # Get settings for configuration
         settings = get_settings()
@@ -1126,7 +1130,7 @@ def work_on(task_or_project: str, max_tasks: int, dry_run: bool, terminal: bool,
                             question_task["gid"],
                             project["gid"]
                         )
-                        console.print(f"    [green]✓[/green] Marked complete and moved to Answered")
+                        console.print("    [green]✓[/green] Marked complete and moved to Answered")
                     except Exception as e:
                         logger.warning(
                             "failed_to_complete_question",
@@ -1244,7 +1248,7 @@ def work_on(task_or_project: str, max_tasks: int, dry_run: bool, terminal: bool,
                 return
 
             # Fetch existing questions once for use in both question creation and task execution
-            console.print(f"\n[dim]Fetching existing question tasks...[/dim]")
+            console.print("\n[dim]Fetching existing question tasks...[/dim]")
             current_tasks = await asyncio.to_thread(
                 tasks_api.get_tasks_for_project,
                 project["gid"],
@@ -1259,11 +1263,11 @@ def work_on(task_or_project: str, max_tasks: int, dry_run: bool, terminal: bool,
 
             # Create question tasks if needed
             if questions_needed:
-                console.print(f"\n[bold]Creating question tasks...[/bold]")
+                console.print("\n[bold]Creating question tasks...[/bold]")
                 me = await asyncio.to_thread(users_api.get_user, "me", {})
                 me_gid = me["gid"]
 
-                for q_type, q_details in questions_needed.items():
+                for _q_type, q_details in questions_needed.items():
                     # Skip if question already exists (has task_gid)
                     if "task_gid" in q_details:
                         continue
@@ -1322,8 +1326,8 @@ Reply with your choice (1 or 2) and I'll proceed accordingly.
                     existing_questions_now[question_name] = result["gid"]
 
                 # Now create dependencies for all blocked tasks
-                console.print(f"\n[bold]Creating Asana dependencies...[/bold]")
-                for q_type, q_details in questions_needed.items():
+                console.print("\n[bold]Creating Asana dependencies...[/bold]")
+                for _q_type, q_details in questions_needed.items():
                     if "task_gid" in q_details and "blocked_task_gids" in q_details:
                         question_gid = q_details["task_gid"]
                         for blocked_task_gid in q_details["blocked_task_gids"]:
@@ -1342,9 +1346,10 @@ Reply with your choice (1 or 2) and I'll proceed accordingly.
                                              error=str(e))
 
             # Review recently completed tasks in Implemented section and move failures to Failed
-            console.print(f"\n[bold]Reviewing recently completed tasks...[/bold]")
+            console.print("\n[bold]Reviewing recently completed tasks...[/bold]")
             try:
                 from datetime import datetime, timedelta
+
                 from aegis.asana.client import AsanaClient
                 asana_client = AsanaClient(settings.asana_access_token)
 
@@ -1420,11 +1425,11 @@ Reply with your choice (1 or 2) and I'll proceed accordingly.
                                     logger.warning("failed_to_move_failed_task", task_gid=task.gid, error=str(e))
                                     console.print(f"    ✗ Failed to move: {task.name}: {e}")
                         else:
-                            console.print(f"  [green]✓ No failures found in recent completions[/green]")
+                            console.print("  [green]✓ No failures found in recent completions[/green]")
                     else:
-                        console.print(f"  [dim]No tasks completed in last 24h[/dim]")
+                        console.print("  [dim]No tasks completed in last 24h[/dim]")
                 else:
-                    console.print(f"  [yellow]⚠ Implemented or Failed section not found - skipping review[/yellow]")
+                    console.print("  [yellow]⚠ Implemented or Failed section not found - skipping review[/yellow]")
 
             except Exception as e:
                 logger.error("review_failed_tasks_error", error=str(e))
@@ -1465,7 +1470,7 @@ Project GID: {project['gid']}"""
 
                     # Add existing questions to context to prevent duplicates
                     if existing_questions_now:
-                        task_context += f"\n\nExisting Question Tasks (DO NOT CREATE DUPLICATES):\n" + "\n".join(f"  - {q}" for q in existing_questions_now.keys())
+                        task_context += "\n\nExisting Question Tasks (DO NOT CREATE DUPLICATES):\n" + "\n".join(f"  - {q}" for q in existing_questions_now)
 
                     if task.get("notes"):
                         task_context += f"\n\nTask Description:\n{task['notes']}"
@@ -1498,23 +1503,23 @@ After completing these steps, EXIT. Do not wait for further input."""
                     try:
                         # Run in terminal mode if enabled
                         if terminal:
-                            console.print(f"  [cyan]Launching Claude Code in new Hyper terminal...[/cyan]")
+                            console.print("  [cyan]Launching Claude Code in new Hyper terminal...[/cyan]")
                             launch_in_hyper_terminal(
                                 ["claude", "--dangerously-skip-permissions", task_context],
                                 cwd=working_dir
                             )
-                            console.print(f"  [dim]Task running in terminal - check Hyper window for progress[/dim]")
+                            console.print("  [dim]Task running in terminal - check Hyper window for progress[/dim]")
 
                             # For terminal mode, we can't easily track completion or get output
                             # So we'll just mark it as completed in the log and continue
                             with open(log_file, "a") as f:
                                 f.write(f"\n{'=' * 80}\n")
                                 f.write(f"[{timestamp}] Task: {task['name']}\n")
-                                f.write(f"Status: LAUNCHED IN TERMINAL\n")
+                                f.write("Status: LAUNCHED IN TERMINAL\n")
                                 f.write(f"{'=' * 80}\n\n")
 
                             completed_count += 1
-                            console.print(f"  [green]✓ Launched successfully[/green]\n")
+                            console.print("  [green]✓ Launched successfully[/green]\n")
                             continue
 
                         # Run claude with output capture using Popen for tracking
@@ -1534,9 +1539,9 @@ After completing these steps, EXIT. Do not wait for further input."""
                             stdout, stderr = process.communicate(timeout=timeout)
                         except subprocess.TimeoutExpired:
                             console.print(f"  [red]✗ Task execution timed out after {timeout} seconds[/red]")
-                            console.print(f"  [yellow]Suggestions:[/yellow]")
+                            console.print("  [yellow]Suggestions:[/yellow]")
                             console.print(f"    • Increase timeout: --timeout {timeout * 2}")
-                            console.print(f"    • Break task into smaller sub-tasks")
+                            console.print("    • Break task into smaller sub-tasks")
                             console.print(f"    • Check log file: {log_file}")
 
                             # Kill the process and get any partial output
@@ -1591,7 +1596,7 @@ After completing these steps, EXIT. Do not wait for further input."""
                                         project["gid"],
                                         section_map["Failed"]
                                     )
-                                    console.print(f"  [yellow]→ Moved to Failed section[/yellow]")
+                                    console.print("  [yellow]→ Moved to Failed section[/yellow]")
                             except Exception as e:
                                 logger.warning("failed_to_move_task", task_gid=task["gid"], error=str(e))
                                 console.print(f"  [yellow]⚠ Could not move to Failed: {e}[/yellow]")
@@ -1599,7 +1604,7 @@ After completing these steps, EXIT. Do not wait for further input."""
                             # Untrack and continue to next task
                             shutdown_handler.untrack_subprocess(process)
                             failed_count += 1
-                            console.print(f"  [yellow]Skipping to next task...[/yellow]\n")
+                            console.print("  [yellow]Skipping to next task...[/yellow]\n")
                             continue
 
                         finally:
@@ -1660,14 +1665,14 @@ After completing these steps, EXIT. Do not wait for further input."""
                                         task["gid"],
                                         project["gid"]
                                     )
-                                    console.print(f"  [green]✓ Completed and moved to Answered[/green]\n")
+                                    console.print("  [green]✓ Completed and moved to Answered[/green]\n")
                                 else:
                                     # Move to Implemented section
                                     await asana_client.complete_task_and_move_to_implemented(
                                         task["gid"],
                                         project["gid"]
                                     )
-                                    console.print(f"  [green]✓ Completed and moved to Implemented[/green]\n")
+                                    console.print("  [green]✓ Completed and moved to Implemented[/green]\n")
                                 completed_count += 1
                             except Exception as e:
                                 logger.warning("failed_to_complete_task", task_gid=task["gid"], error=str(e))
@@ -1690,16 +1695,16 @@ After completing these steps, EXIT. Do not wait for further input."""
                                         project["gid"],
                                         section_map["Failed"]
                                     )
-                                    console.print(f"  [yellow]→ Moved to Failed section[/yellow]\n")
+                                    console.print("  [yellow]→ Moved to Failed section[/yellow]\n")
                                 else:
-                                    console.print(f"  [yellow]⚠ 'Failed' section not found - task left in current section[/yellow]\n")
+                                    console.print("  [yellow]⚠ 'Failed' section not found - task left in current section[/yellow]\n")
                             except Exception as e:
                                 logger.warning("failed_to_move_task", task_gid=task["gid"], error=str(e))
                                 console.print(f"  [yellow]⚠ Could not move to Failed: {e}[/yellow]\n")
                             failed_count += 1
 
                     except subprocess.TimeoutExpired:
-                        console.print(f"  [red]✗ Timeout (5 minutes)[/red]\n")
+                        console.print("  [red]✗ Timeout (5 minutes)[/red]\n")
                         failed_count += 1
                     except Exception as e:
                         console.print(f"  [red]✗ Error: {e}[/red]\n")
@@ -1855,10 +1860,10 @@ def plan(task_or_project: str, target: int, dry_run: bool, no_consolidate: bool,
     console.set_enabled(use_console)
 
     async def _plan() -> None:
-        from aegis.asana.client import AsanaClient
-        import subprocess
         import os
-        from pathlib import Path
+        import subprocess
+
+        from aegis.asana.client import AsanaClient
 
         try:
             settings = get_settings()
@@ -2054,10 +2059,10 @@ Begin your careful analysis now."""
 
                     except subprocess.TimeoutExpired:
                         console.print(f"\n[red]Error: Claude timed out after {timeout} seconds[/red]")
-                        console.print(f"[yellow]Suggestions:[/yellow]")
+                        console.print("[yellow]Suggestions:[/yellow]")
                         console.print(f"  • Increase timeout: --timeout {timeout * 2}")
                         console.print(f"  • Reduce task count: --max-tasks {max(5, max_tasks // 2)}")
-                        console.print(f"  • Skip consolidation: --no-consolidate")
+                        console.print("  • Skip consolidation: --no-consolidate")
                         sys.exit(1)
 
                 return
@@ -2147,7 +2152,7 @@ IMPORTANT: Be selective - only include tasks that are truly ready to implement. 
                 console.print("[yellow]Dry run mode - would move these tasks:[/yellow]")
                 for source, task in candidates[:needed]:
                     console.print(f"  [{source}] → Ready to Implement: {task.name}")
-                console.print(f"\n[dim]Claude prompt (preview):[/dim]")
+                console.print("\n[dim]Claude prompt (preview):[/dim]")
                 console.print(f"[dim]{claude_prompt[:500]}...[/dim]")
                 return
 
@@ -2172,9 +2177,9 @@ IMPORTANT: Be selective - only include tasks that are truly ready to implement. 
 
             except subprocess.TimeoutExpired:
                 console.print(f"\n[red]Error: Claude timed out after {timeout // 2} seconds[/red]")
-                console.print(f"[yellow]Suggestions:[/yellow]")
+                console.print("[yellow]Suggestions:[/yellow]")
                 console.print(f"  • Increase timeout: --timeout {timeout * 2}")
-                console.print(f"  • This usually indicates a complex decision - try reviewing tasks manually")
+                console.print("  • This usually indicates a complex decision - try reviewing tasks manually")
                 sys.exit(1)
 
             if json_match:
@@ -2198,7 +2203,7 @@ IMPORTANT: Be selective - only include tasks that are truly ready to implement. 
                                 section_map["Ready to Implement"]
                             )
                             moved_count += 1
-                            console.print(f"    [green]✓ Moved to Ready to Implement[/green]\n")
+                            console.print("    [green]✓ Moved to Ready to Implement[/green]\n")
 
                     console.print(f"[bold green]✓ Successfully moved {moved_count} tasks![/bold green]")
                     console.print(f"'Ready to Implement' now has {current_count + moved_count} tasks")
@@ -2218,7 +2223,7 @@ IMPORTANT: Be selective - only include tasks that are truly ready to implement. 
                         )
                     console.print(f"[green]✓ Moved {needed} tasks[/green]")
             else:
-                console.print(f"[yellow]Could not parse Claude's response, using automatic selection[/yellow]")
+                console.print("[yellow]Could not parse Claude's response, using automatic selection[/yellow]")
                 console.print(f"[dim]Response: {output[:200]}...[/dim]\n")
 
                 # Fallback: move first N candidates
@@ -2280,12 +2285,12 @@ def create_agents_project(name: str, use_console: bool) -> None:
             console.print(f"[green]✓ Created project: {project.name} (GID: {project.gid})[/green]\n")
 
             # Add project to portfolio
-            console.print(f"Adding project to portfolio...")
+            console.print("Adding project to portfolio...")
             await asana_client.add_project_to_portfolio(
                 portfolio_gid=settings.asana_portfolio_gid,
                 project_gid=project.gid,
             )
-            console.print(f"[green]✓ Added to portfolio[/green]\n")
+            console.print("[green]✓ Added to portfolio[/green]\n")
 
             # Set up standard sections
             console.print("Setting up sections...")
@@ -2299,13 +2304,13 @@ def create_agents_project(name: str, use_console: bool) -> None:
             )
             console.print(f"[green]✓ Created {len(section_map)} sections[/green]\n")
 
-            console.print(f"[bold green]✓ Agents project created successfully![/bold green]")
+            console.print("[bold green]✓ Agents project created successfully![/bold green]")
             console.print(f"\nProject URL: https://app.asana.com/0/{project.gid}")
-            console.print(f"\nNext steps:")
+            console.print("\nNext steps:")
             console.print(f"1. Create tasks in '{name}' to define your agents")
-            console.print(f"2. Set task name = agent name")
-            console.print(f"3. Set task notes = agent prompt")
-            console.print(f"4. Use '@agent-name' to mention agents in tasks/comments")
+            console.print("2. Set task name = agent name")
+            console.print("3. Set task notes = agent prompt")
+            console.print("4. Use '@agent-name' to mention agents in tasks/comments")
 
         except Exception as e:
             console.print(f"[red]Error creating Agents project: {e}[/red]")
@@ -2336,9 +2341,10 @@ def process_agent_mentions(project_name: str, agents_project: str, poll_interval
     console.set_enabled(use_console)
 
     async def _process_mentions() -> None:
-        from aegis.asana.client import AsanaClient
-        import subprocess
         import os
+        import subprocess
+
+        from aegis.asana.client import AsanaClient
 
         try:
             settings = get_settings()
@@ -2373,7 +2379,7 @@ def process_agent_mentions(project_name: str, agents_project: str, poll_interval
 
             if not agents_project_obj:
                 console.print(f"[red]Error: Agents project '{agents_project}' not found[/red]")
-                console.print(f"Run 'aegis create-agents-project' first to create it")
+                console.print("Run 'aegis create-agents-project' first to create it")
                 sys.exit(1)
 
             console.print(f"[bold]Monitoring project: {target_project['name']}[/bold]")
@@ -2406,7 +2412,7 @@ def process_agent_mentions(project_name: str, agents_project: str, poll_interval
 
                         # Check task name and notes for mentions
                         text_to_check = f"{task.name} {task.notes or ''}"
-                        mentions = asana_client.extract_mentions_from_text(text_to_check)
+                        asana_client.extract_mentions_from_text(text_to_check)
 
                         # Get comments on the task
                         comments = await asana_client.get_comments(task.gid)
@@ -2473,12 +2479,12 @@ Keep your response concise and helpful."""
                                             # Post the response as a comment
                                             response_text = f"[@{mentioned_name} responding]\n\n{response}"
                                             await asana_client.add_comment(task.gid, response_text)
-                                            console.print(f"[green]✓ Posted response[/green]")
+                                            console.print("[green]✓ Posted response[/green]")
 
                                             # Try to add a thumbs-up reaction to the original comment
                                             try:
                                                 await asana_client.add_reaction_to_story(comment.gid)
-                                                console.print(f"[green]✓ Added reaction to comment[/green]")
+                                                console.print("[green]✓ Added reaction to comment[/green]")
                                             except Exception as e:
                                                 console.print(f"[yellow]Warning: Could not add reaction: {e}[/yellow]")
                                         else:
@@ -2488,9 +2494,9 @@ Keep your response concise and helpful."""
 
                                     except subprocess.TimeoutExpired:
                                         console.print(f"[red]✗ Agent '{mentioned_name}' timed out after {timeout} seconds[/red]")
-                                        console.print(f"[yellow]Suggestions:[/yellow]")
+                                        console.print("[yellow]Suggestions:[/yellow]")
                                         console.print(f"  • Increase timeout: --timeout {timeout * 2}")
-                                        console.print(f"  • Simplify the agent's prompt")
+                                        console.print("  • Simplify the agent's prompt")
 
                                         # Post timeout notification to Asana
                                         timeout_message = f"[@{mentioned_name} timeout]\n\nAgent response generation timed out after {timeout} seconds. Try increasing timeout with `--timeout {timeout * 2}`"

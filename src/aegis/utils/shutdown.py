@@ -11,8 +11,7 @@ import asyncio
 import os
 import signal
 import subprocess
-import sys
-from typing import Callable, Optional
+from collections.abc import Callable
 
 import structlog
 
@@ -108,7 +107,7 @@ class ShutdownHandler:
         self._active_sessions.discard(session)
         logger.debug("untracked_db_session", session_id=id(session))
 
-    def request_shutdown(self, signum: Optional[int] = None, frame=None) -> None:
+    def request_shutdown(self, signum: int | None = None, frame=None) -> None:
         """Request graceful shutdown.
 
         Args:
@@ -177,7 +176,7 @@ class ShutdownHandler:
             )
             logger.info("all_tasks_completed")
             return True
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(
                 "shutdown_timeout_exceeded",
                 remaining_tasks=len(self._in_progress_tasks),
@@ -350,7 +349,7 @@ class ShutdownHandler:
 
 
 # Global singleton instance
-_shutdown_handler: Optional[ShutdownHandler] = None
+_shutdown_handler: ShutdownHandler | None = None
 
 
 def get_shutdown_handler(

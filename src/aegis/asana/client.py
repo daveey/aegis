@@ -8,7 +8,14 @@ import structlog
 from asana.rest import ApiException
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from aegis.asana.models import AsanaComment, AsanaProject, AsanaSection, AsanaTask, AsanaTaskUpdate, AsanaUser
+from aegis.asana.models import (
+    AsanaComment,
+    AsanaProject,
+    AsanaSection,
+    AsanaTask,
+    AsanaTaskUpdate,
+    AsanaUser,
+)
 
 logger = structlog.get_logger()
 
@@ -713,7 +720,7 @@ class AsanaClient:
         # Pattern 1: HTML format with data-asana-gid
         html_pattern = r'<a[^>]*data-asana-gid="(\d+)"[^>]*>@([^<]+)</a>'
         html_matches = re.findall(html_pattern, text)
-        for gid, name in html_matches:
+        for _gid, name in html_matches:
             mentions.append(name.strip())
 
         # Pattern 2: Plain @ mentions (fallback)

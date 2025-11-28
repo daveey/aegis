@@ -1,0 +1,19 @@
+{
+  "last_run_refactor_detector": null,
+  "last_run_code_consolidator": null,
+  "blocked_tasks": {},
+  "custom_field_gids": {
+    "Agent": null,
+    "Swarm Status": null,
+    "Session ID": null,
+    "Cost": null,
+    "Max Cost": null,
+    "Merge Approval": null,
+    "Worktree Path": null
+  },
+  "orchestrator": {
+    "started_at": null,
+    "last_poll": null,
+    "active_tasks": []
+  }
+}

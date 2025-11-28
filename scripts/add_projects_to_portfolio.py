@@ -8,8 +8,9 @@ import sys
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from aegis.config import get_settings
 import asana
+
+from aegis.config import get_settings
 
 
 async def add_projects_to_portfolio(portfolio_gid: str) -> None:
@@ -61,7 +62,7 @@ async def add_projects_to_portfolio(portfolio_gid: str) -> None:
                 failed_count += 1
 
         print(f"\n{'='*60}")
-        print(f"Summary:")
+        print("Summary:")
         print(f"  Added: {added_count}")
         print(f"  Failed: {failed_count}")
         print(f"  Total: {len(active_projects)}")
@@ -69,7 +70,7 @@ async def add_projects_to_portfolio(portfolio_gid: str) -> None:
 
         # Generate .env update
         project_gids = ",".join([p['gid'] for p in active_projects])
-        print(f"\nUpdate .env with:")
+        print("\nUpdate .env with:")
         print(f"ASANA_PROJECT_GIDS={project_gids}")
 
     except Exception as e:
@@ -83,7 +84,7 @@ if __name__ == "__main__":
     portfolio_gid = "1212078048284635"
 
     print(f"{'='*60}")
-    print(f"Adding all active projects to Aegis portfolio")
+    print("Adding all active projects to Aegis portfolio")
     print(f"{'='*60}\n")
 
     asyncio.run(add_projects_to_portfolio(portfolio_gid))

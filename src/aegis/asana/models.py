@@ -90,6 +90,9 @@ class AsanaTask(BaseModel):
     # Custom fields for Aegis-specific metadata
     custom_fields: list[dict] = Field(default_factory=list)
 
+    # Dependencies (for blocking check)
+    dependencies: list[dict] = Field(default_factory=list)
+
     @property
     def is_assigned_to_aegis(self) -> bool:
         """Check if task is assigned to Aegis (placeholder for now)."""
@@ -105,6 +108,71 @@ class AsanaTask(BaseModel):
         if self.due_on:
             parts.append(f"\nDue: {self.due_on}")
         return "\n".join(parts)
+
+    # -------------------------------------------------------------------------
+    # Custom Field Helper Methods (for Swarm)
+    # -------------------------------------------------------------------------
+
+    def get_custom_field(self, field_name: str) -> str | int | float | None:
+        """Get value of a custom field by name.
+
+        Args:
+            field_name: Name of custom field (e.g., "Agent", "Swarm Status")
+
+        Returns:
+            Custom field value, or None if not found
+        """
+        for field in self.custom_fields:
+            if field.get("name") == field_name:
+                # Handle different field types
+                if "enum_value" in field and field["enum_value"]:
+                    return field["enum_value"].get("name")
+                elif "text_value" in field:
+                    return field["text_value"]
+                elif "number_value" in field:
+                    return field["number_value"]
+                elif "display_value" in field:
+                    return field["display_value"]
+                else:
+                    return field.get("value")
+        return None
+
+    @property
+    def agent(self) -> str | None:
+        """Get agent type from custom fields."""
+        return self.get_custom_field("Agent")
+
+    @property
+    def swarm_status(self) -> str | None:
+        """Get swarm status from custom fields."""
+        return self.get_custom_field("Swarm Status")
+
+    @property
+    def session_id(self) -> str | None:
+        """Get session ID from custom fields."""
+        return self.get_custom_field("Session ID")
+
+    @property
+    def cost(self) -> float | None:
+        """Get cost from custom fields."""
+        value = self.get_custom_field("Cost")
+        return float(value) if value is not None else None
+
+    @property
+    def max_cost(self) -> float | None:
+        """Get max cost from custom fields."""
+        value = self.get_custom_field("Max Cost")
+        return float(value) if value is not None else None
+
+    @property
+    def merge_approval(self) -> str | None:
+        """Get merge approval from custom fields."""
+        return self.get_custom_field("Merge Approval")
+
+    @property
+    def worktree_path(self) -> str | None:
+        """Get worktree path from custom fields."""
+        return self.get_custom_field("Worktree Path")
 
 
 class AsanaTaskUpdate(BaseModel):

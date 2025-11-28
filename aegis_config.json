@@ -1,0 +1,15 @@
+{
+  "hydration_command": "uv sync",
+  "default_max_cost": 2.00,
+  "poll_interval_seconds": 10,
+  "watchdog_interval_seconds": 60,
+  "silent_timeout_seconds": 300,
+  "memory_file": "swarm_memory.md",
+  "schedules": {
+    "refactor_detector": "weekly",
+    "code_consolidator": "weekly"
+  },
+  "worktree_dir": "_worktrees",
+  "pid_file": ".aegis.pid",
+  "dashboard_url": "http://localhost:8501"
+}

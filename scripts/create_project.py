@@ -8,8 +8,9 @@ import sys
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from aegis.config import get_settings
 import asana
+
+from aegis.config import get_settings
 
 
 async def create_project(name: str, code_path: str | None = None) -> str:
@@ -58,7 +59,7 @@ async def create_project(name: str, code_path: str | None = None) -> str:
         print(f"\nCreating project '{name}'...")
 
         # Build project notes
-        notes = f"Code managed by Aegis\n"
+        notes = "Code managed by Aegis\n"
         if code_path:
             # Expand home directory
             expanded_path = os.path.expanduser(code_path)
@@ -89,7 +90,7 @@ async def create_project(name: str, code_path: str | None = None) -> str:
             print(f"  URL: {project_url}")
 
         # Try to add to Aegis portfolio
-        print(f"\nAdding project to Aegis portfolio...")
+        print("\nAdding project to Aegis portfolio...")
         try:
             await asyncio.to_thread(
                 portfolios_api.add_item_for_portfolio,
@@ -120,12 +121,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     print(f"{'='*60}")
-    print(f"Creating Asana Project")
+    print("Creating Asana Project")
     print(f"{'='*60}\n")
 
     project_gid = asyncio.run(create_project(args.name, args.code_path))
 
     print(f"\n{'='*60}")
-    print(f"Project created successfully!")
+    print("Project created successfully!")
     print(f"GID: {project_gid}")
     print(f"{'='*60}")

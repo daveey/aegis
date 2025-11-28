@@ -1,0 +1,116 @@
+{
+  "canonical_sections": [
+    {
+      "name": "Drafts",
+      "description": "Passive holding area for new tasks"
+    },
+    {
+      "name": "Clarification Needed",
+      "description": "Waiting for user response to questions"
+    },
+    {
+      "name": "Planning",
+      "description": "Planner agent designs implementation"
+    },
+    {
+      "name": "Ready Queue",
+      "description": "Tasks ready for execution by agents"
+    },
+    {
+      "name": "In Progress",
+      "description": "Tasks currently being executed"
+    },
+    {
+      "name": "Review",
+      "description": "Tasks being reviewed and tested"
+    },
+    {
+      "name": "Merging",
+      "description": "Tasks being integrated into main"
+    },
+    {
+      "name": "Done",
+      "description": "Completed tasks"
+    }
+  ],
+  "custom_fields": [
+    {
+      "name": "Agent",
+      "type": "enum",
+      "options": [
+        {"name": "Triage", "enabled": true},
+        {"name": "Planner", "enabled": true},
+        {"name": "Worker", "enabled": true},
+        {"name": "Reviewer", "enabled": true},
+        {"name": "Merger", "enabled": true},
+        {"name": "Refactor", "enabled": true},
+        {"name": "Consolidator", "enabled": true},
+        {"name": "Ideation", "enabled": true},
+        {"name": "Documentation", "enabled": true}
+      ],
+      "default": "Triage",
+      "description": "Active agent persona for this task"
+    },
+    {
+      "name": "Swarm Status",
+      "type": "enum",
+      "options": [
+        {"name": "Idle", "enabled": true},
+        {"name": "Running", "enabled": true},
+        {"name": "Blocked", "enabled": true},
+        {"name": "Complete", "enabled": true}
+      ],
+      "description": "Current execution state"
+    },
+    {
+      "name": "Session ID",
+      "type": "text",
+      "description": "UUID for execution continuity and log linking"
+    },
+    {
+      "name": "Cost",
+      "type": "number",
+      "precision": 2,
+      "description": "Accumulated cost in USD"
+    },
+    {
+      "name": "Max Cost",
+      "type": "number",
+      "precision": 2,
+      "default": 2.00,
+      "description": "Maximum allowed cost (hard limit)"
+    },
+    {
+      "name": "Merge Approval",
+      "type": "enum",
+      "options": [
+        {"name": "Auto-Approve", "enabled": true},
+        {"name": "Manual Check", "enabled": true},
+        {"name": "Approved", "enabled": true}
+      ],
+      "default": "Auto-Approve",
+      "description": "Safety gate for code integration"
+    },
+    {
+      "name": "Worktree Path",
+      "type": "text",
+      "description": "Path to ephemeral git worktree"
+    }
+  ],
+  "agent_routing": {
+    "Ready Queue": {
+      "Triage": "Analyze requirements and determine next steps",
+      "Worker": "Execute implementation in isolated worktree",
+      "Documentation": "Update knowledge base and preferences"
+    },
+    "Planning": {
+      "Planner": "Design architecture and create implementation plan"
+    },
+    "Review": {
+      "Reviewer": "Run tests and verify implementation quality"
+    },
+    "Merging": {
+      "Merger": "Integrate code into main branch with safety checks"
+    }
+  }
+}

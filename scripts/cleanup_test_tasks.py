@@ -16,7 +16,6 @@ import argparse
 import asyncio
 import os
 import sys
-from datetime import datetime
 
 import asana
 from rich.console import Console
@@ -138,7 +137,7 @@ async def cleanup_test_tasks(project_gid: str, dry_run: bool = False) -> None:
                 failed_count += 1
 
         # Summary
-        console.print(f"\n[bold]Cleanup Summary[/bold]")
+        console.print("\n[bold]Cleanup Summary[/bold]")
         console.print(f"  [green]Deleted: {deleted_count}[/green]")
         if failed_count > 0:
             console.print(f"  [red]Failed: {failed_count}[/red]")

@@ -1,0 +1,24 @@
+{
+  "hooks": [
+    {
+      "event": "SessionStart",
+      "command": ".claude/hooks/log-session.sh"
+    },
+    {
+      "event": "SessionEnd",
+      "command": ".claude/hooks/log-session.sh"
+    },
+    {
+      "event": "PostToolUse",
+      "command": ".claude/hooks/log-session.sh"
+    },
+    {
+      "event": "UserPromptSubmit",
+      "command": ".claude/hooks/log-session.sh"
+    },
+    {
+      "event": "Stop",
+      "command": ".claude/hooks/log-session.sh"
+    }
+  ]
+}

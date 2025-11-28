@@ -8,8 +8,9 @@ import sys
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from aegis.config import get_settings
 import asana
+
+from aegis.config import get_settings
 
 
 async def list_workspace_projects() -> None:

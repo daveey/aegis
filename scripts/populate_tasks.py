@@ -8,9 +8,9 @@ import sys
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from aegis.config import get_settings
 import asana
 
+from aegis.config import get_settings
 
 # Define tasks for Aegis project (Phase 1 development work)
 AEGIS_TASKS = [
@@ -553,7 +553,7 @@ async def create_tasks_for_project(project_gid: str, tasks: list[dict]) -> None:
             print(f"  Error: {str(e)[:100]}")
             failed_count += 1
 
-    print(f"\nSummary:")
+    print("\nSummary:")
     print(f"  Created: {created_count}")
     print(f"  Failed: {failed_count}")
     print(f"  Total: {len(tasks)}")
@@ -561,7 +561,7 @@ async def create_tasks_for_project(project_gid: str, tasks: list[dict]) -> None:
 
 async def main() -> None:
     """Main entry point."""
-    settings = get_settings()
+    get_settings()
 
     # Get project GIDs
     aegis_project_gid = "1212085431574340"  # From earlier creation
@@ -573,22 +573,22 @@ async def main() -> None:
 
     # Create Aegis tasks
     print(f"\n{'='*60}")
-    print(f"Aegis Project Tasks (Development)")
+    print("Aegis Project Tasks (Development)")
     print(f"{'='*60}")
     await create_tasks_for_project(aegis_project_gid, AEGIS_TASKS)
 
     # Create Triptic tasks
     print(f"\n{'='*60}")
-    print(f"Triptic Project Tasks (Application)")
+    print("Triptic Project Tasks (Application)")
     print(f"{'='*60}")
     await create_tasks_for_project(triptic_project_gid, TRIPTIC_TASKS)
 
     print(f"\n{'='*60}")
     print("All Done!")
     print(f"{'='*60}")
-    print(f"\nView tasks:")
-    print(f"  Aegis: https://app.asana.com/0/1212085431574340")
-    print(f"  Triptic: https://app.asana.com/0/1212085075370316")
+    print("\nView tasks:")
+    print("  Aegis: https://app.asana.com/0/1212085431574340")
+    print("  Triptic: https://app.asana.com/0/1212085075370316")
 
 
 if __name__ == "__main__":
