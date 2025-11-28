@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 💬 Ask a Question
+    url: https://github.com/daveey/aegis/discussions/new?category=q-a
+    about: Ask questions or discuss ideas in GitHub Discussions
+  - name: 📚 Documentation
+    url: https://github.com/daveey/aegis/blob/main/README.md
+    about: Check the documentation for usage guides and references
