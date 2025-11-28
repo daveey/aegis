@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     # Asana Configuration
     asana_access_token: str = Field(..., description="Asana Personal Access Token")
     asana_workspace_gid: str = Field(..., description="Asana Workspace GID")
-    asana_team_gid: str = Field(..., description="Asana Team GID (for creating projects in organizations)")
+    asana_team_gid: str | None = Field(default=None, description="Asana Team GID (optional - for creating projects in organizations)")
     asana_portfolio_gid: str = Field(
         ..., description="Asana Portfolio GID (Aegis portfolio containing projects to monitor)"
     )
@@ -110,17 +110,24 @@ def get_priority_weights_from_settings(settings: Settings | None = None):
         settings: Settings instance (uses global if None)
 
     Returns:
-        PriorityWeights instance configured from settings
+        PriorityWeights instance configured from settings or None if unavailable
+
+    Note:
+        This function is deprecated. The prioritizer moved to _deprecated/.
     """
-    from aegis.orchestrator.prioritizer import PriorityWeights
+    try:
+        from _deprecated.prioritizer import PriorityWeights
 
-    if settings is None:
-        settings = get_settings()
+        if settings is None:
+            settings = get_settings()
 
-    return PriorityWeights(
-        due_date=settings.priority_weight_due_date,
-        dependency=settings.priority_weight_dependency,
-        user_priority=settings.priority_weight_user_priority,
-        project_importance=settings.priority_weight_project_importance,
-        age_factor=settings.priority_weight_age,
-    )
+        return PriorityWeights(
+            due_date=settings.priority_weight_due_date,
+            dependency=settings.priority_weight_dependency,
+            user_priority=settings.priority_weight_user_priority,
+            project_importance=settings.priority_weight_project_importance,
+            age_factor=settings.priority_weight_age,
+        )
+    except ImportError:
+        # Deprecated module not available
+        return None

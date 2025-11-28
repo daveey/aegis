@@ -1,13 +1,28 @@
-"""Task orchestration and coordination."""
+"""Task orchestration and coordination.
 
-from aegis.orchestrator.main import AgentPool, Orchestrator, TaskQueue
-from aegis.orchestrator.prioritizer import PriorityWeights, TaskPrioritizer, TaskScore
+Note: Old orchestrator (Orchestrator, TaskQueue, AgentPool) and prioritizer
+have been deprecated and moved to _deprecated/.
 
-__all__ = [
-    "Orchestrator",
-    "TaskQueue",
-    "AgentPool",
-    "TaskPrioritizer",
-    "PriorityWeights",
-    "TaskScore",
-]
+New architecture uses SwarmDispatcher from aegis.orchestrator.dispatcher.
+"""
+
+from aegis.orchestrator.dispatcher import SwarmDispatcher  # noqa: F401
+
+__all__ = ["SwarmDispatcher"]
+
+# For backwards compatibility, try to import deprecated classes
+try:
+    from _deprecated.orchestrator_main import AgentPool, Orchestrator, TaskQueue  # noqa: F401
+    from _deprecated.prioritizer import PriorityWeights, TaskPrioritizer, TaskScore  # noqa: F401
+
+    __all__.extend([
+        "Orchestrator",
+        "TaskQueue",
+        "AgentPool",
+        "TaskPrioritizer",
+        "PriorityWeights",
+        "TaskScore",
+    ])
+except ImportError:
+    # Deprecated modules not available
+    pass
