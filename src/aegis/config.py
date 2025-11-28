@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     # Asana Configuration
     asana_access_token: str = Field(..., description="Asana Personal Access Token")
     asana_workspace_gid: str = Field(..., description="Asana Workspace GID")
+    asana_team_gid: str = Field(..., description="Asana Team GID (for creating projects in organizations)")
     asana_portfolio_gid: str = Field(
         ..., description="Asana Portfolio GID (Aegis portfolio containing projects to monitor)"
     )
@@ -46,7 +47,23 @@ class Settings(BaseSettings):
         default=30, description="How often to poll Asana for new tasks"
     )
     max_concurrent_tasks: int = Field(
-        default=5, description="Maximum concurrent tasks to process"
+        default=3, description="Maximum concurrent tasks to process"
+    )
+    execution_mode: str = Field(
+        default="simple_executor",
+        description="Execution mode: 'simple_executor' (Claude API) or 'claude_cli' (subprocess)"
+    )
+    terminal_mode: bool = Field(
+        default=False,
+        description="Launch tasks in separate terminal windows (only for claude_cli mode)"
+    )
+
+    # Shutdown Configuration
+    shutdown_timeout: int = Field(
+        default=300, description="Maximum seconds to wait for tasks during shutdown (default: 5 minutes)"
+    )
+    subprocess_term_timeout: int = Field(
+        default=10, description="Seconds to wait after SIGTERM before SIGKILL for subprocesses"
     )
 
     # Logging Configuration
@@ -56,6 +73,23 @@ class Settings(BaseSettings):
     # Feature Flags
     enable_vector_db: bool = Field(default=False, description="Enable vector database features")
     enable_multi_agent: bool = Field(default=False, description="Enable multi-agent orchestration")
+
+    # Task Prioritization Configuration
+    priority_weight_due_date: float = Field(
+        default=10.0, description="Weight for due date urgency in task prioritization"
+    )
+    priority_weight_dependency: float = Field(
+        default=8.0, description="Weight for task dependencies in prioritization"
+    )
+    priority_weight_user_priority: float = Field(
+        default=7.0, description="Weight for user-assigned priority in prioritization"
+    )
+    priority_weight_project_importance: float = Field(
+        default=5.0, description="Weight for project importance in prioritization"
+    )
+    priority_weight_age: float = Field(
+        default=3.0, description="Weight for task age (anti-starvation) in prioritization"
+    )
 
 
 # Global settings instance
@@ -68,3 +102,26 @@ def get_settings() -> Settings:
     if _settings is None:
         _settings = Settings()
     return _settings
+
+
+def get_priority_weights_from_settings(settings: Settings | None = None):
+    """Create PriorityWeights from settings configuration.
+
+    Args:
+        settings: Settings instance (uses global if None)
+
+    Returns:
+        PriorityWeights instance configured from settings
+    """
+    from aegis.orchestrator.prioritizer import PriorityWeights
+
+    if settings is None:
+        settings = get_settings()
+
+    return PriorityWeights(
+        due_date=settings.priority_weight_due_date,
+        dependency=settings.priority_weight_dependency,
+        user_priority=settings.priority_weight_user_priority,
+        project_importance=settings.priority_weight_project_importance,
+        age_factor=settings.priority_weight_age,
+    )

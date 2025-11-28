@@ -36,6 +36,8 @@ dependencies = [
     "structlog>=24.0.0",  # Structured logging
     "click>=8.1.0",  # CLI interface
     "rich>=13.7.0",  # Pretty terminal output
+    "fastapi>=0.109.0",  # Web framework
+    "uvicorn[standard]>=0.27.0",  # ASGI server
 ]
 
 [project.optional-dependencies]

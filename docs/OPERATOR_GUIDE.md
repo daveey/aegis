@@ -51,8 +51,8 @@ Get up and running in 5 steps:
 2. **Install Aegis**
    ```bash
    git clone <repo-url> && cd aegis
-   python3 -m venv .venv && source .venv/bin/activate
-   pip install -e .
+   uv venv && source .venv/bin/activate
+   uv uv pip install -e .
    ```
 
 3. **Configure**
@@ -85,7 +85,7 @@ Continue reading for detailed installation and configuration instructions.
 
 1. **Python 3.11 or higher**
    ```bash
-   python3 --version  # Should be 3.11+
+   uv run python --version  # Should be 3.11+
    ```
 
 2. **Claude CLI**
@@ -143,7 +143,7 @@ cd aegis
 
 Using `venv`:
 ```bash
-python3 -m venv .venv
+uv venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 ```
 
@@ -157,12 +157,12 @@ source .venv/bin/activate
 
 Using `pip`:
 ```bash
-pip install -e .
+uv pip install -e .
 ```
 
 Or using `uv`:
 ```bash
-uv pip install -e .
+uv uv pip install -e .
 ```
 
 For development dependencies:
@@ -726,7 +726,7 @@ All task executions post results to Asana as comments:
 **Weekly Maintenance:**
 - [ ] Archive old logs (see Maintenance section)
 - [ ] Review API usage and costs
-- [ ] Check for Aegis updates: `git pull && pip install -U -e .`
+- [ ] Check for Aegis updates: `git pull && uv pip install -U -e .`
 
 ---
 
@@ -1069,7 +1069,7 @@ aegis do <project>
 - [ ] Update project configurations
 
 #### Monthly
-- [ ] Update dependencies: `pip install -U -e .`
+- [ ] Update dependencies: `uv pip install -U -e .`
 - [ ] Backup database (if using PostgreSQL)
 - [ ] Review and update documentation
 
@@ -1100,7 +1100,7 @@ psql aegis < aegis-backup-20251125.sql
 git pull origin main
 
 # Update dependencies
-pip install -U -e .
+uv pip install -U -e .
 
 # Run migrations (if any)
 alembic upgrade head
@@ -1363,7 +1363,7 @@ A: Yes, the database is optional. Basic functionality works without it.
 A: Aegis logs the error, posts to Asana, and continues with next tasks.
 
 **Q: How do I upgrade Aegis?**
-A: Run `git pull && pip install -U -e . && alembic upgrade head`
+A: Run `git pull && uv pip install -U -e . && alembic upgrade head`
 
 **Q: Can I use Aegis with other LLMs?**
 A: Currently only Claude is supported. Other LLMs may be added in future.

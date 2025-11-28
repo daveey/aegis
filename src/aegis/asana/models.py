@@ -31,6 +31,14 @@ class AsanaProject(BaseModel):
     public: bool = False
 
 
+class AsanaSection(BaseModel):
+    """Asana section model."""
+
+    gid: str
+    name: str
+    project: dict | None = None
+
+
 class AsanaComment(BaseModel):
     """Asana comment/story model."""
 

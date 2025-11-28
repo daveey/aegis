@@ -26,6 +26,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import asana
 import pytest
+from rich.console import Console
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -33,6 +34,8 @@ from aegis.asana.client import AsanaClient
 from aegis.asana.models import AsanaProject, AsanaTask, AsanaTaskUpdate
 from aegis.config import Settings, get_settings
 from aegis.database.models import Base, Comment, Project, Task, TaskExecution
+
+console = Console()
 
 
 # Test configuration markers
@@ -724,6 +727,164 @@ Please provide a brief response to complete this task."""
         assert len(response_text) > 0
         assert message.usage.input_tokens > 0
         assert message.usage.output_tokens > 0
+
+
+class TestOrchestratorWorkflow:
+    """Test orchestrator workflow components (discovery, execution, state tracking)."""
+
+    @pytest.mark.asyncio
+    async def test_complete_orchestration_cycle(
+        self,
+        asana_client: AsanaClient,
+        test_project: AsanaProject,
+        test_task: AsanaTask,
+        db_session: Session,
+    ):
+        """Test complete orchestration cycle: discover → execute → update → cleanup.
+
+        This test validates the full workflow that would occur during orchestration:
+        1. Discovery: Project and task sync to database
+        2. Execution: Create execution record and simulate agent work
+        3. Update: Post results to Asana and update database
+        4. Cleanup: Verify all state is correctly persisted
+        """
+        # === PHASE 1: DISCOVERY (Simulating orchestrator sync) ===
+        console.print("[bold]Phase 1: Task Discovery[/bold]")
+
+        # Sync project to database
+        db_project = Project(
+            asana_gid=test_project.gid,
+            name=test_project.name,
+            portfolio_gid=os.getenv("ASANA_PORTFOLIO_GID", "test_portfolio"),
+            workspace_gid=os.getenv("ASANA_WORKSPACE_GID"),
+            last_synced_at=datetime.utcnow(),
+        )
+        db_session.add(db_project)
+        db_session.flush()
+
+        # Sync task to database
+        db_task = Task(
+            asana_gid=test_task.gid,
+            project_id=db_project.id,
+            name=test_task.name,
+            description=test_task.notes,
+            completed=False,
+            assignee_gid=test_task.assignee.gid if test_task.assignee else None,
+            assigned_to_aegis=True,
+            asana_permalink_url=test_task.permalink_url,
+            last_synced_at=datetime.utcnow(),
+            modified_at=test_task.modified_at,
+        )
+        db_session.add(db_task)
+        db_session.flush()
+
+        assert db_task.id is not None
+        assert db_task.assigned_to_aegis is True
+        console.print(f"✓ Task discovered: {db_task.name}")
+
+        # === PHASE 2: EXECUTION (Simulating agent processing) ===
+        console.print("\n[bold]Phase 2: Task Execution[/bold]")
+
+        # Create execution record (start of processing)
+        execution = TaskExecution(
+            task_id=db_task.id,
+            status="in_progress",
+            agent_type="claude_agent",
+            started_at=datetime.utcnow(),
+        )
+        db_session.add(execution)
+        db_session.flush()
+
+        # Post "in progress" comment to Asana
+        await asana_client.add_comment(
+            test_task.gid,
+            "🔄 Task picked up by Aegis orchestrator\n\nStarting execution with claude_agent..."
+        )
+        console.print(f"✓ Execution started (ID: {execution.id})")
+
+        # Simulate agent work
+        await asyncio.sleep(0.5)  # Simulate processing time
+
+        mock_response = """Task completed successfully!
+
+Analysis: This is a test task for E2E validation.
+Action taken: Processed task requirements and generated response.
+Result: Test completed, all systems operational.
+
+This response was generated during integration testing."""
+
+        # Update execution with results
+        execution.status = "completed"
+        execution.success = True
+        execution.completed_at = datetime.utcnow()
+        execution.duration_seconds = 1
+        execution.output = mock_response
+        execution.input_tokens = 150
+        execution.output_tokens = 75
+        db_session.flush()
+
+        console.print("✓ Execution completed successfully")
+
+        # === PHASE 3: UPDATE (Post results to Asana) ===
+        console.print("\n[bold]Phase 3: Update Asana[/bold]")
+
+        # Post completion comment
+        completion_comment = f"""✓ Task completed via Aegis
+
+**Agent**: {execution.agent_type}
+**Status**: {'success' if execution.success else 'failed'}
+**Duration**: {execution.duration_seconds}s
+**Tokens**: {execution.input_tokens} in, {execution.output_tokens} out
+
+**Output**:
+```
+{mock_response}
+```
+
+**Timestamp**: {execution.completed_at.isoformat() if execution.completed_at else 'N/A'}
+"""
+
+        comment = await asana_client.add_comment(test_task.gid, completion_comment)
+
+        # Store comment in database
+        db_comment = Comment(
+            asana_gid=comment.gid,
+            task_id=db_task.id,
+            text=comment.text,
+            created_by_gid=comment.created_by.gid,
+            created_by_name=comment.created_by.name,
+            is_from_aegis=True,
+            comment_type="response",
+            created_at=comment.created_at,
+        )
+        db_session.add(db_comment)
+        db_session.commit()
+
+        console.print("✓ Results posted to Asana")
+
+        # === PHASE 4: VERIFICATION (Validate complete state) ===
+        console.print("\n[bold]Phase 4: State Verification[/bold]")
+
+        # Verify database state
+        db_executions = db_session.query(TaskExecution).filter_by(task_id=db_task.id).all()
+        assert len(db_executions) == 1
+        assert db_executions[0].status == "completed"
+        assert db_executions[0].success is True
+        console.print(f"✓ Database: {len(db_executions)} execution(s) recorded")
+
+        # Verify Asana state
+        comments = await asana_client.get_comments(test_task.gid)
+        aegis_comments = [c for c in comments if "Aegis" in c.text]
+        assert len(aegis_comments) >= 2  # Start + completion comments
+        console.print(f"✓ Asana: {len(aegis_comments)} comment(s) posted")
+
+        # Verify database comments
+        db_comments = db_session.query(Comment).filter_by(task_id=db_task.id).all()
+        assert len(db_comments) >= 1
+        assert db_comments[0].is_from_aegis is True
+        console.print(f"✓ Database: {len(db_comments)} comment(s) logged")
+
+        console.print("\n[green]✓ Complete orchestration cycle validated[/green]")
 
 
 @pytest.mark.skipif(

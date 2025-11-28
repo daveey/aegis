@@ -7,8 +7,8 @@ from typing import Optional
 import structlog
 from sqlalchemy.orm import Session
 
-from aegis.database.models import SystemState
-from aegis.database.session import get_db_session
+from aegis.database.models import SystemState, TaskExecution
+from aegis.database.session import get_db, get_db_session
 
 logger = structlog.get_logger(__name__)
 
@@ -143,3 +143,74 @@ def update_system_stats(
     finally:
         if should_close_session and session:
             session.close()
+
+
+def mark_in_progress_tasks_interrupted(session: Optional[Session] = None) -> int:
+    """Mark all in-progress task executions as interrupted.
+
+    This should be called during shutdown to update the status of tasks
+    that were running when the system was terminated.
+
+    Args:
+        session: Database session (optional)
+
+    Returns:
+        Number of tasks marked as interrupted
+    """
+    should_close_session = False
+
+    try:
+        if session is None:
+            session = get_db()
+            should_close_session = True
+
+        # Find all in-progress task executions
+        in_progress_tasks = (
+            session.query(TaskExecution)
+            .filter(TaskExecution.status == "in_progress")
+            .all()
+        )
+
+        count = 0
+        for task_execution in in_progress_tasks:
+            task_execution.status = "interrupted"
+            task_execution.completed_at = datetime.now()
+            task_execution.error_message = "Task interrupted by system shutdown"
+
+            # Calculate duration if we have a start time
+            if task_execution.started_at:
+                duration = datetime.now() - task_execution.started_at
+                task_execution.duration_seconds = int(duration.total_seconds())
+
+            count += 1
+
+        session.commit()
+
+        if count > 0:
+            logger.info("marked_tasks_interrupted", count=count)
+        else:
+            logger.debug("no_in_progress_tasks_to_mark")
+
+        return count
+
+    except Exception as e:
+        logger.error("failed_to_mark_tasks_interrupted", error=str(e), exc_info=True)
+        if session:
+            session.rollback()
+        raise
+    finally:
+        if should_close_session and session:
+            session.close()
+
+
+async def mark_in_progress_tasks_interrupted_async() -> int:
+    """Mark in-progress tasks as interrupted (async version for cleanup callbacks).
+
+    Returns:
+        Number of tasks marked as interrupted
+    """
+    try:
+        return mark_in_progress_tasks_interrupted()
+    except Exception as e:
+        logger.error("failed_to_mark_tasks_interrupted_async", error=str(e), exc_info=True)
+        return 0

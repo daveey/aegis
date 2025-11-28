@@ -16,8 +16,7 @@ from sqlalchemy import (
     String,
     Text,
 )
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.sql import func
 
 Base = declarative_base()
@@ -116,7 +115,7 @@ class TaskExecution(Base, TimestampMixin):
     __tablename__ = "task_executions"
 
     id = Column(Integer, primary_key=True)
-    task_id = Column(Integer, ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False)
+    task_id = Column(Integer, ForeignKey("tasks.id", ondelete="CASCADE"), nullable=True)  # Nullable until we implement task sync
 
     # Execution Details
     status = Column(
