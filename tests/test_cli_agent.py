@@ -12,12 +12,12 @@ def mock_settings():
 
 @pytest.fixture
 def mock_asana_client():
-    with patch("aegis.cli.AsanaClient") as MockClient:
+    with patch("aegis.asana.client.AsanaClient") as MockClient:
         yield MockClient
 
 @pytest.fixture
 def mock_asana_service():
-    with patch("aegis.cli.AsanaService") as MockService:
+    with patch("aegis.infrastructure.asana_service.AsanaService") as MockService:
         service = MockService.return_value
         service.get_task = AsyncMock()
         service.get_task.return_value.name = "Test Task"
@@ -25,8 +25,9 @@ def mock_asana_service():
 
 @pytest.fixture
 def mock_agents():
-    with patch("aegis.cli.TriageAgent") as MockTriage, \
-         patch("aegis.cli.PlannerAgent") as MockPlanner:
+    # Patching at aegis.agents because that's where aegis.cli imports from
+    with patch("aegis.agents.TriageAgent") as MockTriage, \
+         patch("aegis.agents.PlannerAgent") as MockPlanner:
 
         MockTriage.return_value.name = "Triage Agent"
         MockTriage.return_value.execute = AsyncMock()
@@ -40,7 +41,7 @@ def test_agent_command_triage(mock_settings, mock_asana_client, mock_asana_servi
     runner = CliRunner()
     result = runner.invoke(main, ["agent", "Triage", "1234567890123456"])
 
-    assert result.exit_code == 0
+    assert result.exit_code == 0, f"Command failed with output: {result.output}"
     assert "Running Triage Agent..." in result.output
     assert "Task GID: 1234567890123456" in result.output
 
@@ -55,7 +56,7 @@ def test_agent_command_interactive(mock_settings, mock_asana_client, mock_asana_
     runner = CliRunner()
     result = runner.invoke(main, ["agent", "Triage", "1234567890123456", "--interactive"])
 
-    assert result.exit_code == 0
+    assert result.exit_code == 0, f"Command failed with output: {result.output}"
     assert "Entering interactive mode..." in result.output
 
     mock_agents["Triage"].return_value.execute.assert_called_once()
@@ -69,10 +70,10 @@ def test_agent_command_url_resolution(mock_settings, mock_asana_client, mock_asa
     url = "https://app.asana.com/0/123/1234567890123456"
     result = runner.invoke(main, ["agent", "Triage", url])
 
-    assert result.exit_code == 0
+    assert result.exit_code == 0, f"Command failed with output: {result.output}"
     assert "Task GID: 1234567890123456" in result.output
 
-def test_agent_command_unknown_agent(mock_settings):
+def test_agent_command_unknown_agent(mock_settings, mock_asana_client, mock_asana_service):
     runner = CliRunner()
     result = runner.invoke(main, ["agent", "UnknownAgent", "1234567890123456"])
 
