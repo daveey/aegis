@@ -644,6 +644,10 @@ class TestCLIIntegration:
     """Test the CLI commands for orchestration."""
 
     @pytest.mark.asyncio
+    @pytest.mark.skipif(
+        not os.getenv("ASANA_ACCESS_TOKEN") or not os.getenv("ANTHROPIC_API_KEY"),
+        reason="Requires valid Asana and Anthropic credentials"
+    )
     async def test_config_command(self):
         """Test that the config command runs without errors."""
         import subprocess
@@ -660,6 +664,10 @@ class TestCLIIntegration:
         assert "Aegis Configuration" in result.stdout
 
     @pytest.mark.asyncio
+    @pytest.mark.skipif(
+        not os.getenv("ASANA_ACCESS_TOKEN") or not os.getenv("ANTHROPIC_API_KEY"),
+        reason="Requires valid Asana and Anthropic credentials"
+    )
     async def test_test_asana_command(self):
         """Test that the test-asana command works."""
         import subprocess
