@@ -89,6 +89,103 @@ def start(project: str):
 
 
 @main.command()
+@click.argument("agent_name")
+@click.argument("task_id")
+@click.option("--interactive", is_flag=True, help="Run in interactive mode (inherit stdio)")
+def agent(agent_name: str, task_id: str, interactive: bool):
+    """Run a specific agent on a task.
+
+    AGENT_NAME: Name of the agent (Triage, Planner, Worker, Reviewer, Merger, Documentation)
+    TASK_ID: Asana Task GID or URL
+    """
+    console.print(f"[bold green]Running {agent_name} Agent...[/bold green]")
+
+    async def _run_agent():
+        from aegis.agents import (
+            DocumentationAgent,
+            MergerAgent,
+            PlannerAgent,
+            ReviewerAgent,
+            TriageAgent,
+            WorkerAgent,
+        )
+        from aegis.asana.client import AsanaClient
+        from aegis.infrastructure.asana_service import AsanaService
+        from aegis.infrastructure.memory_manager import MemoryManager
+        from aegis.infrastructure.worktree_manager import WorktreeManager
+
+        try:
+            settings = Settings()
+
+            # Resolve task GID
+            task_gid = _resolve_task_gid(task_id, settings)
+            console.print(f"[green]✓[/green] Task GID: {task_gid}")
+
+            # Initialize services
+            client = AsanaClient(settings.asana_access_token)
+            asana_service = AsanaService(client)
+            repo_root = Path.cwd()
+
+            # Fetch task to get details
+            task = await asana_service.get_task(task_gid)
+            console.print(f"[green]✓[/green] Task: {task.name}\n")
+
+            # Instantiate agent
+            agent_instance = None
+            name_lower = agent_name.lower()
+
+            if name_lower == "triage":
+                agent_instance = TriageAgent(asana_service, repo_root)
+            elif name_lower == "planner":
+                agent_instance = PlannerAgent(asana_service, repo_root)
+            elif name_lower == "worker":
+                worktree_manager = WorktreeManager(repo_root)
+                agent_instance = WorkerAgent(asana_service, repo_root, worktree_manager=worktree_manager)
+            elif name_lower == "reviewer":
+                worktree_manager = WorktreeManager(repo_root)
+                agent_instance = ReviewerAgent(asana_service, repo_root, worktree_manager=worktree_manager)
+            elif name_lower == "merger":
+                worktree_manager = WorktreeManager(repo_root)
+                agent_instance = MergerAgent(asana_service, repo_root, worktree_manager=worktree_manager)
+            elif name_lower == "documentation":
+                memory_manager = MemoryManager(repo_root)
+                agent_instance = DocumentationAgent(asana_service, repo_root, memory_manager=memory_manager)
+            else:
+                console.print(f"[red]✗ Unknown agent: {agent_name}[/red]")
+                console.print("Available agents: Triage, Planner, Worker, Reviewer, Merger, Documentation")
+                sys.exit(1)
+
+            # Execute agent
+            console.print(f"[bold]Executing {agent_instance.name}...[/bold]")
+            if interactive:
+                console.print("[dim]Entering interactive mode...[/dim]\n")
+
+            result = await agent_instance.execute(task, interactive=interactive)
+
+            if result.success:
+                console.print(f"\n[green]✓ Execution successful[/green]")
+                console.print(f"Summary: {result.summary}")
+                if result.details:
+                    console.print("Details:")
+                    for detail in result.details:
+                        console.print(f"  • {detail}")
+            else:
+                console.print(f"\n[red]✗ Execution failed[/red]")
+                console.print(f"Error: {result.error}")
+                sys.exit(1)
+
+        except Exception as e:
+            console.print(f"[red]Fatal error: {e}[/red]")
+            sys.exit(1)
+
+    try:
+        asyncio.run(_run_agent())
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Interrupted by user[/yellow]")
+        sys.exit(130)
+
+
+@main.command()
 def stop():
     """Stop a running swarm dispatcher."""
     console.print("[bold]Stopping Aegis Swarm...[/bold]")
@@ -945,6 +1042,35 @@ def _parse_project_input(project: str, settings: Settings) -> str:
         sys.exit(1)
 
     return asyncio.run(_lookup())
+
+
+def _resolve_task_gid(task_input: str, settings: Settings) -> str:
+    """Resolve task GID from input.
+
+    Args:
+        task_input: Task GID or URL
+        settings: Settings instance
+
+    Returns:
+        Task GID
+    """
+    import re
+
+    # If it's a URL, extract GID
+    if "asana.com" in task_input:
+        # URL format: https://app.asana.com/0/project_gid/task_gid
+        # or https://app.asana.com/0/0/task_gid
+        parts = task_input.rstrip("/").split("/")
+        candidate = parts[-1]
+        if re.match(r"^\d{13,}$", candidate):
+            return candidate
+        raise ValueError(f"Could not extract task GID from URL: {task_input}")
+
+    # If it's a GID (long number), return it
+    if re.match(r"^\d{13,}$", task_input):
+        return task_input
+
+    raise ValueError(f"Invalid task ID or URL: {task_input}")
 
 
 if __name__ == "__main__":

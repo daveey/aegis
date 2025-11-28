@@ -100,11 +100,13 @@ Analyze the request and update the appropriate documentation file(s).
 
         Args:
             task: AsanaTask with documentation request
+            **kwargs: Additional arguments (interactive, etc.)
 
         Returns:
             AgentResult with update status
         """
-        logger.info("documentation_start", task_gid=task.gid, task_name=task.name)
+        interactive = kwargs.get("interactive", False)
+        logger.info("documentation_start", task_gid=task.gid, task_name=task.name, interactive=interactive)
 
         try:
             # Determine if this is a preference or memory update
@@ -115,7 +117,18 @@ Analyze the request and update the appropriate documentation file(s).
 
             # Generate and run prompt
             prompt = self.get_prompt(task)
-            stdout, stderr, returncode = await self.run_claude_code(prompt, timeout=300)
+            stdout, stderr, returncode = await self.run_claude_code(
+                prompt,
+                timeout=300,
+                interactive=interactive,
+            )
+
+            if interactive:
+                return AgentResult(
+                    success=True,
+                    summary="Interactive session completed",
+                    details=["Ran interactively"],
+                )
 
             if returncode != 0:
                 logger.error("documentation_failed", task_gid=task.gid, stderr=stderr)
