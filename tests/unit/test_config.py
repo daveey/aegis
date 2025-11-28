@@ -56,7 +56,7 @@ class TestSettings:
             assert settings.database_url == "postgresql://localhost/aegis"
             assert settings.redis_url == "redis://localhost:6379"
             assert settings.poll_interval_seconds == 30
-            assert settings.max_concurrent_tasks == 5
+            assert settings.max_concurrent_tasks == 3  # Changed from 5 to 3 in Aegis 2.0
             assert settings.log_level == "INFO"
             assert settings.log_format == "json"
             assert settings.enable_vector_db is False
