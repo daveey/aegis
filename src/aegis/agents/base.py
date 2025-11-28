@@ -125,6 +125,7 @@ class BaseAgent(ABC):
         prompt: str,
         cwd: Path | None = None,
         timeout: int = 300,
+        interactive: bool = False,
     ) -> tuple[str, str, int]:
         """Run Claude Code CLI with prompt.
 
@@ -132,6 +133,7 @@ class BaseAgent(ABC):
             prompt: Prompt to send to Claude Code
             cwd: Working directory (default: repo_root)
             timeout: Timeout in seconds
+            interactive: Whether to run in interactive mode (inherit stdio)
 
         Returns:
             Tuple of (stdout, stderr, returncode)
@@ -146,6 +148,7 @@ class BaseAgent(ABC):
             agent=self.name,
             session_id=self.session_id,
             cwd=str(cwd),
+            interactive=interactive,
         )
 
         try:
@@ -153,14 +156,28 @@ class BaseAgent(ABC):
             prompt_file = cwd / f".aegis_prompt_{self.session_id}.txt"
             prompt_file.write_text(prompt, encoding="utf-8")
 
-            # Run Claude Code CLI
-            result = subprocess.run(
-                ["claude", "code", "--prompt-file", str(prompt_file)],
-                cwd=cwd,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
+            if interactive:
+                # Run interactively - inherit stdio
+                # Note: timeout is ignored in interactive mode as it depends on user input
+                result = subprocess.run(
+                    ["claude", "code", "--prompt-file", str(prompt_file)],
+                    cwd=cwd,
+                    check=False,  # Don't raise on non-zero exit
+                )
+                stdout, stderr = "", ""
+                returncode = result.returncode
+
+            else:
+                # Run headless - capture output
+                result = subprocess.run(
+                    ["claude", "code", "--prompt-file", str(prompt_file)],
+                    cwd=cwd,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                )
+                stdout, stderr = result.stdout, result.stderr
+                returncode = result.returncode
 
             # Cleanup prompt file
             prompt_file.unlink(missing_ok=True)
@@ -169,11 +186,11 @@ class BaseAgent(ABC):
                 "claude_code_complete",
                 agent=self.name,
                 session_id=self.session_id,
-                returncode=result.returncode,
-                stdout_size=len(result.stdout),
+                returncode=returncode,
+                stdout_size=len(stdout),
             )
 
-            return result.stdout, result.stderr, result.returncode
+            return stdout, stderr, returncode
 
         except subprocess.TimeoutExpired as e:
             logger.error(

@@ -91,11 +91,13 @@ Run all tests and verify quality standards.
 
         Args:
             task: AsanaTask to review
+            **kwargs: Additional arguments (interactive, etc.)
 
         Returns:
             AgentResult with review decision
         """
-        logger.info("review_start", task_gid=task.gid, task_name=task.name)
+        interactive = kwargs.get("interactive", False)
+        logger.info("review_start", task_gid=task.gid, task_name=task.name, interactive=interactive)
 
         worktree_path = self.worktree_manager.get_worktree_path(task.gid)
 
@@ -117,7 +119,15 @@ Run all tests and verify quality standards.
                 prompt,
                 cwd=worktree_path,
                 timeout=900,  # 15 minute timeout for review
+                interactive=interactive,
             )
+
+            if interactive:
+                return AgentResult(
+                    success=True,
+                    summary="Interactive session completed",
+                    details=["Ran interactively"],
+                )
 
             if returncode != 0:
                 logger.error("review_failed", task_gid=task.gid, stderr=stderr)

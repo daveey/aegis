@@ -106,11 +106,13 @@ Follow the plan step-by-step. Test as you go. Remember to rebase on main before 
 
         Args:
             task: AsanaTask to implement
+            **kwargs: Additional arguments (interactive, etc.)
 
         Returns:
             AgentResult with implementation status
         """
-        logger.info("worker_start", task_gid=task.gid, task_name=task.name)
+        interactive = kwargs.get("interactive", False)
+        logger.info("worker_start", task_gid=task.gid, task_name=task.name, interactive=interactive)
 
         worktree_path = None
 
@@ -125,7 +127,15 @@ Follow the plan step-by-step. Test as you go. Remember to rebase on main before 
                 prompt,
                 cwd=worktree_path,
                 timeout=1800,  # 30 minute timeout for implementation
+                interactive=interactive,
             )
+
+            if interactive:
+                return AgentResult(
+                    success=True,
+                    summary="Interactive session completed",
+                    details=["Ran interactively"],
+                )
 
             if returncode != 0:
                 logger.error("worker_failed", task_gid=task.gid, stderr=stderr)

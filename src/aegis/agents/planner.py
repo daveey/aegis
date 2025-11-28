@@ -92,16 +92,29 @@ Use the Plan → Critique → Refine process (2-3 iterations) to ensure quality.
 
         Args:
             task: AsanaTask to plan
+            **kwargs: Additional arguments (interactive, etc.)
 
         Returns:
             AgentResult with plan and next steps
         """
-        logger.info("planning_start", task_gid=task.gid, task_name=task.name)
+        interactive = kwargs.get("interactive", False)
+        logger.info("planning_start", task_gid=task.gid, task_name=task.name, interactive=interactive)
 
         try:
             # Generate and run prompt
             prompt = self.get_prompt(task)
-            stdout, stderr, returncode = await self.run_claude_code(prompt, timeout=600)  # 10 min timeout
+            stdout, stderr, returncode = await self.run_claude_code(
+                prompt,
+                timeout=600,  # 10 min timeout
+                interactive=interactive,
+            )
+
+            if interactive:
+                return AgentResult(
+                    success=True,
+                    summary="Interactive session completed",
+                    details=["Ran interactively"],
+                )
 
             if returncode != 0:
                 logger.error("planning_failed", task_gid=task.gid, stderr=stderr)

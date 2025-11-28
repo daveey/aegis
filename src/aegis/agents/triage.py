@@ -83,16 +83,25 @@ Analyze the task above and provide your decision in the format specified.
 
         Args:
             task: AsanaTask to triage
+            **kwargs: Additional arguments (interactive, etc.)
 
         Returns:
             AgentResult with routing decision
         """
-        logger.info("triage_start", task_gid=task.gid, task_name=task.name)
+        interactive = kwargs.get("interactive", False)
+        logger.info("triage_start", task_gid=task.gid, task_name=task.name, interactive=interactive)
 
         try:
             # Generate and run prompt
             prompt = self.get_prompt(task)
-            stdout, stderr, returncode = await self.run_claude_code(prompt)
+            stdout, stderr, returncode = await self.run_claude_code(prompt, interactive=interactive)
+
+            if interactive:
+                return AgentResult(
+                    success=True,
+                    summary="Interactive session completed",
+                    details=["Ran interactively"],
+                )
 
             if returncode != 0:
                 logger.error("triage_failed", task_gid=task.gid, stderr=stderr)

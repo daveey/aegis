@@ -1060,6 +1060,74 @@ async def _command_name_async(required_arg: str, flag: bool, value: str) -> None
 - Structured logging for all operations
 - `opts` dict for parameters (not kwargs)
 
+### 7. File Organization
+
+**IMPORTANT**: Keep the repository root directory clean and minimal. Only essential files belong in the root.
+
+#### Files That Belong in Root
+
+- **README.md** - Main project entry point
+- **CLAUDE.md** - This file (AI assistant development guide)
+- **CONTRIBUTING.md** - Contribution guidelines
+- **SECURITY.md** - Security policy
+- **LICENSE** - Project license
+- **PROJECT_STRUCTURE.md** - File-by-file codebase map (major reference doc)
+- **TOOLS.md** - CLI reference (linked from README)
+- **Standard config files**: `.gitignore`, `.env.example`, `pyproject.toml`, `alembic.ini`, `docker-compose.yml`
+
+#### Where to Put Documentation
+
+| Type of Document | Location | Examples |
+|------------------|----------|----------|
+| **Implementation summaries** | `docs/implementation/` | `FEATURE_IMPLEMENTATION_SUMMARY.md` |
+| **Completion reports** | `docs/implementation/` | `FEATURE_COMPLETION_REPORT.md` |
+| **Status updates** | `docs/implementation/` | `FEATURE_STATUS.md` |
+| **Bug fix documentation** | `docs/fixes/` | `BUG_DESCRIPTION_FIX.md` |
+| **Architecture proposals** | `docs/architecture/` | `REFACTOR_PLAN.md` |
+| **Design documents** | `design/` | `PROJECT_OVERVIEW.md`, `ORCHESTRATION.md` |
+| **Operator guides** | `docs/` | `OPERATOR_GUIDE.md`, `SHUTDOWN_HANDLING.md` |
+| **Test documentation** | `tests/integration/` or `tests/unit/` | `E2E_TEST_GUIDE.md` |
+| **Temporary/scratch files** | `docs/` | Experimental configs, notes |
+
+#### What NOT to Put in Root
+
+❌ Implementation summaries
+❌ Completion reports
+❌ Bug fix documentation
+❌ Status updates
+❌ Scratch files or temporary configs
+❌ Historical documentation
+❌ Per-feature documentation
+
+#### Guidelines for New Documentation
+
+1. **Before creating a new .md file**, determine its category
+2. **Place it in the appropriate directory** (see table above)
+3. **Add a README.md** in the directory if it doesn't exist
+4. **Link to it** from relevant docs (CLAUDE.md, README.md, etc.)
+5. **Never commit to root** unless it's one of the essential files listed above
+
+#### Directory READMEs
+
+Each documentation directory has a README.md explaining:
+- Purpose of the directory
+- Types of files it contains
+- Guidelines for adding new files
+- Index of existing documents
+
+See:
+- `docs/implementation/README.md` - Implementation documentation index
+- `docs/architecture/README.md` - Architecture documentation index
+- `docs/fixes/README.md` - Bug fix documentation index
+
+#### Enforcement
+
+When you (as an AI assistant) are asked to create documentation:
+1. **Check the category** of the document
+2. **Place it in the correct directory** according to the table above
+3. **Do not create .md files in root** unless they are essential files
+4. **If unsure**, ask the user or default to `docs/` rather than root
+
 ---
 
 ## Troubleshooting
