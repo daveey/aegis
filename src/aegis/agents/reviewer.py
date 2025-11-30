@@ -5,11 +5,12 @@ from pathlib import Path
 
 import structlog
 
-from aegis.agents.base import AgentResult, BaseAgent
-from aegis.asana.models import AsanaTask
+from aegis.agents.base import AgentResult, BaseAgent, AgentTargetType
+from aegis.asana.models import AsanaTask, AsanaProject
 from aegis.infrastructure.worktree_manager import WorktreeManager
+from aegis.utils.asana_utils import format_asana_resource
 
-logger = structlog.get_logger()
+logger = structlog.get_logger(__name__)
 
 
 class ReviewerAgent(BaseAgent):
@@ -34,12 +35,17 @@ class ReviewerAgent(BaseAgent):
     @property
     def name(self) -> str:
         """Agent name."""
-        return "Reviewer Agent"
+        return "reviewer_agent"
 
     @property
     def status_emoji(self) -> str:
         """Status emoji."""
         return "✓"
+
+    @property
+    def target_type(self) -> AgentTargetType:
+        """Target type."""
+        return AgentTargetType.TASK
 
     def get_prompt(self, task: AsanaTask) -> str:
         """Generate prompt for code review.
@@ -50,7 +56,7 @@ class ReviewerAgent(BaseAgent):
         Returns:
             Prompt text
         """
-        prompt_file = Path(__file__).parent.parent.parent.parent / "prompts" / "reviewer.md"
+        prompt_file = Path(__file__).parent.parent.parent.parent / "prompts" / "reviewer.prompt.txt"
 
         if not prompt_file.exists():
             logger.warning("reviewer_prompt_not_found", prompt_file=str(prompt_file))
@@ -86,23 +92,27 @@ Run all tests and verify quality standards.
 
         return context
 
-    async def execute(self, task: AsanaTask, **kwargs) -> AgentResult:
+    async def execute(self, target: AsanaTask | AsanaProject, **kwargs) -> AgentResult:
         """Execute code review.
 
         Args:
-            task: AsanaTask to review
+            target: AsanaTask to review
             **kwargs: Additional arguments (interactive, etc.)
 
         Returns:
             AgentResult with review decision
         """
+        if not isinstance(target, AsanaTask):
+             return AgentResult(success=False, error="ReviewerAgent only supports Tasks")
+
+        task = target
         interactive = kwargs.get("interactive", False)
-        logger.info("review_start", task_gid=task.gid, task_name=task.name, interactive=interactive)
+        logger.info("review_start", task=format_asana_resource(task), interactive=interactive)
 
         worktree_path = self.worktree_manager.get_worktree_path(task.gid)
 
         if not worktree_path.exists():
-            logger.error("worktree_not_found", task_gid=task.gid, worktree_path=str(worktree_path))
+            logger.error("worktree_not_found", task=format_asana_resource(task), worktree_path=str(worktree_path))
             return AgentResult(
                 success=False,
                 error="Worktree not found - implementation may have failed",
@@ -130,18 +140,38 @@ Run all tests and verify quality standards.
                 )
 
             if returncode != 0:
-                logger.error("review_failed", task_gid=task.gid, stderr=stderr)
+                logger.error("review_failed", task=format_asana_resource(task), stderr=stderr)
                 return AgentResult(
                     success=False,
                     error=f"Claude Code failed: {stderr}",
                     summary="Review failed during execution",
                 )
 
+            # Check for blocker
+            if "## BLOCKER ENCOUNTERED" in stdout:
+                import re
+                blocker_match = re.search(
+                    r"## BLOCKER ENCOUNTERED\s*(.+?)(?:$)",
+                    stdout,
+                    re.IGNORECASE | re.DOTALL,
+                )
+                blocker_details = blocker_match.group(1).strip() if blocker_match else "No details provided"
+
+                return AgentResult(
+                    success=False,
+                    next_agent="Triage",
+                    next_section="Clarification Needed",
+                    summary="Review blocked",
+                    details=["Blocker encountered:", blocker_details[:500]],
+                    clear_session_id=False,
+                    assignee="me",
+                )
+
             # Parse review decision
             approved, issues = self._parse_review_decision(stdout)
 
             if approved:
-                logger.info("review_approved", task_gid=task.gid)
+                logger.info("review_approved", task=format_asana_resource(task))
                 return AgentResult(
                     success=True,
                     next_agent="Merger",
@@ -156,7 +186,7 @@ Run all tests and verify quality standards.
                     clear_session_id=True,  # Merger gets fresh session
                 )
             else:
-                logger.info("review_rejected", task_gid=task.gid, issues=len(issues))
+                logger.info("review_rejected", task=format_asana_resource(task), issues=len(issues))
                 return AgentResult(
                     success=False,
                     next_agent="Worker",
@@ -167,7 +197,7 @@ Run all tests and verify quality standards.
                 )
 
         except Exception as e:
-            logger.error("review_error", task_gid=task.gid, error=str(e))
+            logger.error("review_error", task=format_asana_resource(task), error=str(e))
             return AgentResult(
                 success=False,
                 error=str(e),

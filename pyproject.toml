@@ -1,135 +1,39 @@
 [project]
 name = "aegis"
 version = "0.1.0"
-description = "Intelligent assistant orchestration system using Asana as the control plane"
+description = "A new project"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
-authors = [
-    { name = "Your Name", email = "your.email@example.com" }
-]
-keywords = ["ai", "agents", "orchestration", "asana", "claude"]
-classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Developers",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-]
-
 dependencies = [
-    "anthropic>=0.40.0",
+    "streamlit>=1.32.0",
+    "watchdog>=4.0.0",
+    "click>=8.0.0",
+    "structlog>=24.0.0",
+    "rich>=13.0.0",
     "asana>=5.0.0",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
+    "anthropic>=0.18.0",
+    "tenacity>=8.0.0",
+    "PyYAML>=6.0.0",
     "python-dotenv>=1.0.0",
-    "httpx>=0.27.0",
-    "aiohttp>=3.9.0",
-    "asyncio>=3.4.3",
-    "sqlalchemy>=2.0.0",
-    "alembic>=1.13.0",
-    "psycopg2-binary>=2.9.9",
-    "redis>=5.0.0",
-    "qdrant-client>=1.7.0",
-    "openai>=1.0.0",  # For embeddings
-    "tiktoken>=0.5.0",  # Token counting
-    "tenacity>=8.2.0",  # Retry logic
-    "structlog>=24.0.0",  # Structured logging
-    "click>=8.1.0",  # CLI interface
-    "rich>=13.7.0",  # Pretty terminal output
-    "fastapi>=0.109.0",  # Web framework
-    "uvicorn[standard]>=0.27.0",  # ASGI server
-]
-
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0.0",
-    "pytest-asyncio>=0.23.0",
-    "pytest-cov>=4.1.0",
-    "pytest-mock>=3.12.0",
-    "ruff>=0.1.0",
-    "black>=24.0.0",
-    "mypy>=1.8.0",
-    "ipython>=8.20.0",
-    "ipdb>=0.13.13",
-]
-test = [
-    "pytest>=8.0.0",
-    "pytest-asyncio>=0.23.0",
-    "pytest-cov>=4.1.0",
-    "pytest-mock>=3.12.0",
-    "pytest-xdist>=3.5.0",  # Parallel test execution
+    "sqlalchemy>=2.0.44",
 ]
 
 [project.scripts]
 aegis = "aegis.cli:main"
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+]
+
 [build-system]
-requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.ruff]
-target-version = "py311"
-line-length = 100
-
-[tool.ruff.lint]
-select = [
-    "E",    # pycodestyle errors
-    "W",    # pycodestyle warnings
-    "F",    # pyflakes
-    "I",    # isort
-    "N",    # pep8-naming
-    "UP",   # pyupgrade
-    "B",    # flake8-bugbear
-    "C4",   # flake8-comprehensions
-    "SIM",  # flake8-simplify
-    "TCH",  # flake8-type-checking
-]
-ignore = [
-    "E501",  # line too long (handled by formatter)
-]
-
-[tool.ruff.lint.per-file-ignores]
-"__init__.py" = ["F401"]  # Unused imports in __init__.py
-"tests/**/*.py" = ["S101"]  # Allow assert in tests
-
-[tool.black]
-line-length = 100
-target-version = ["py311"]
-
-[tool.mypy]
-python_version = "3.11"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-check_untyped_defs = true
-strict_optional = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_no_return = true
-
-[[tool.mypy.overrides]]
-module = ["asana.*", "qdrant_client.*"]
-ignore_missing_imports = true
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-python_files = ["test_*.py", "*_test.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-addopts = [
-    "--strict-markers",
-    "--strict-config",
-    "--cov=aegis",
-    "--cov-report=term-missing",
-    "--cov-report=html",
-]
 asyncio_mode = "auto"
-markers = [
-    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "live: marks tests that require live API calls (deselect with '-m \"not live\"')",
-]

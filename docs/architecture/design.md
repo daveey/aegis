@@ -79,7 +79,7 @@ The following sections are mandatory:
 
 ### 3.3 Schema Synchronization Strategy
 
-Since projects evolve, we will not manually manage sections. A script `tools/sync_asana_sections.py` will enforce the state defined in **3.1**.
+Since projects evolve, we will not manually manage sections. A script `tools/sync_asana_project.py` will enforce the state defined in **3.1**.
 
 - **Config Source**: `schema/asana_config.json` (Source of Truth).
 - **Sync Logic**:
@@ -386,7 +386,7 @@ A simplified command to spin up a new Swarm-ready project.
 - ☐ Create Project & Fields.
 - ☐ Setup `uv` + `pyright`.
 - ☐ Implement `AsanaService` with Rich Text Adapters and Dependency Checking.
-- ☐ Implement `sync_asana_sections.py` and `aegis create` command.
+- [x] Implement `sync_asana_project.py` and `aegis create` command.
 
 ### Phase 2: The Orchestrator
 

@@ -5,11 +5,12 @@ from pathlib import Path
 
 import structlog
 
-from aegis.agents.base import AgentResult, BaseAgent
-from aegis.asana.models import AsanaTask
+from aegis.agents.base import AgentResult, BaseAgent, AgentTargetType
+from aegis.asana.models import AsanaTask, AsanaProject
 from aegis.infrastructure.asana_service import AsanaService
+from aegis.utils.asana_utils import format_asana_resource
 
-logger = structlog.get_logger()
+logger = structlog.get_logger(__name__)
 
 
 class TriageAgent(BaseAgent):
@@ -25,12 +26,17 @@ class TriageAgent(BaseAgent):
     @property
     def name(self) -> str:
         """Agent name."""
-        return "Triage Agent"
+        return "triage_agent"
 
     @property
     def status_emoji(self) -> str:
         """Status emoji."""
         return "🔍"
+
+    @property
+    def target_type(self) -> AgentTargetType:
+        """Target type."""
+        return AgentTargetType.TASK
 
     def get_prompt(self, task: AsanaTask) -> str:
         """Generate prompt for triage analysis.
@@ -41,7 +47,7 @@ class TriageAgent(BaseAgent):
         Returns:
             Prompt text
         """
-        prompt_file = Path(__file__).parent.parent.parent.parent / "prompts" / "triage.md"
+        prompt_file = Path(__file__).parent.parent.parent.parent / "prompts" / "triage.prompt.txt"
 
         if not prompt_file.exists():
             logger.warning("triage_prompt_not_found", prompt_file=str(prompt_file))
@@ -71,25 +77,42 @@ class TriageAgent(BaseAgent):
 
 ---
 
-# Your Analysis
+# Output Format
 
-Analyze the task above and provide your decision in the format specified.
+You must output your decision as a valid JSON object matching the following schema:
+
+```json
+{{
+    "success": true,
+    "next_agent": "Planner" | "Triage" | "Documentation" | null,
+    "next_section": "Planning" | "Clarification Needed" | "Ready Queue" | null,
+    "summary": "Concise summary under 50 words",
+    "details": ["Detail 1", "Detail 2"],
+    "clear_session_id": boolean,
+    "assignee": "me" | null
+}}
+```
+
+Do not include any text outside the JSON block.
 """
-
         return context
 
-    async def execute(self, task: AsanaTask, **kwargs) -> AgentResult:
+    async def execute(self, target: AsanaTask | AsanaProject, **kwargs) -> AgentResult:
         """Execute triage analysis.
 
         Args:
-            task: AsanaTask to triage
+            target: AsanaTask to triage
             **kwargs: Additional arguments (interactive, etc.)
 
         Returns:
             AgentResult with routing decision
         """
+        if not isinstance(target, AsanaTask):
+             return AgentResult(success=False, error="TriageAgent only supports Tasks")
+
+        task = target
         interactive = kwargs.get("interactive", False)
-        logger.info("triage_start", task_gid=task.gid, task_name=task.name, interactive=interactive)
+        logger.info("triage_start", task=format_asana_resource(task), interactive=interactive)
 
         try:
             # Generate and run prompt
@@ -104,7 +127,7 @@ Analyze the task above and provide your decision in the format specified.
                 )
 
             if returncode != 0:
-                logger.error("triage_failed", task_gid=task.gid, stderr=stderr)
+                logger.error("triage_failed", task=format_asana_resource(task), stderr=stderr)
                 return AgentResult(
                     success=False,
                     error=f"Claude Code failed: {stderr}",
@@ -112,91 +135,39 @@ Analyze the task above and provide your decision in the format specified.
                 )
 
             # Parse decision from output
-            decision = self._parse_decision(stdout)
+            try:
+                # clean up potential markdown code blocks
+                json_str = stdout.strip()
+                if json_str.startswith("```json"):
+                    json_str = json_str[7:]
+                if json_str.endswith("```"):
+                    json_str = json_str[:-3]
+
+                decision = AgentResult.model_validate_json(json_str.strip())
+            except Exception as e:
+                logger.error("triage_json_parse_error", error=str(e), stdout=stdout)
+                return AgentResult(
+                    success=False,
+                    next_agent="Triage",
+                    next_section="Clarification Needed",
+                    summary="Triage analysis failed: invalid JSON output",
+                    details=["Could not parse Claude Code output as JSON.", f"Error: {str(e)}"],
+                    clear_session_id=False,
+                )
 
             logger.info(
                 "triage_complete",
-                task_gid=task.gid,
-                decision=decision.get("action"),
+                task=format_asana_resource(task),
+                decision=decision.next_agent,
             )
 
             return decision
 
         except Exception as e:
-            logger.error("triage_error", task_gid=task.gid, error=str(e))
+            import traceback
+            logger.error("triage_error", task=format_asana_resource(task), error=str(e), traceback=traceback.format_exc())
             return AgentResult(
                 success=False,
                 error=str(e),
                 summary="Triage analysis encountered an error",
-            )
-
-    def _parse_decision(self, output: str) -> AgentResult:
-        """Parse triage decision from Claude Code output.
-
-        Args:
-            output: Claude Code stdout
-
-        Returns:
-            AgentResult with routing decision
-        """
-        # Look for decision markers
-        if "DECISION: Route to Planner" in output or "Route to Planner" in output:
-            # Extract summary
-            summary_match = re.search(r"SUMMARY:\s*(.+?)(?:\n|$)", output, re.IGNORECASE)
-            summary = summary_match.group(1).strip() if summary_match else "Requirements are clear"
-
-            return AgentResult(
-                success=True,
-                next_agent="Planner",
-                next_section="Planning",
-                summary=f"Task triaged: {summary}",
-                details=["Routing to Planner for architecture design"],
-                clear_session_id=True,
-            )
-
-        elif "DECISION: Request Clarification" in output or "Request Clarification" in output:
-            # Extract questions
-            questions_match = re.search(
-                r"QUESTIONS:\s*(.+?)(?:REASONING:|$)",
-                output,
-                re.IGNORECASE | re.DOTALL,
-            )
-            questions = []
-            if questions_match:
-                questions_text = questions_match.group(1).strip()
-                questions = [q.strip() for q in re.findall(r"^\d+\.\s*(.+?)$", questions_text, re.MULTILINE)]
-
-            return AgentResult(
-                success=True,
-                next_agent="Triage",  # Stay with Triage until clarified
-                next_section="Clarification Needed",
-                summary="Task needs clarification from user",
-                details=[f"Question {i+1}: {q}" for i, q in enumerate(questions)],
-                clear_session_id=False,  # Keep session for continuity
-            )
-
-        elif "DECISION: Route to Documentation" in output or "Route to Documentation" in output:
-            # Extract preference
-            pref_match = re.search(r"PREFERENCE:\s*(.+?)(?:\n|$)", output, re.IGNORECASE)
-            preference = pref_match.group(1).strip() if pref_match else "User preference update"
-
-            return AgentResult(
-                success=True,
-                next_agent="Documentation",
-                next_section="Ready Queue",
-                summary=f"Preference to record: {preference}",
-                details=["Routing to Documentation Agent"],
-                clear_session_id=True,
-            )
-
-        else:
-            # Fallback - assume route to planner
-            logger.warning("triage_decision_unclear", output=output[:200])
-            return AgentResult(
-                success=True,
-                next_agent="Planner",
-                next_section="Planning",
-                summary="Task appears actionable (decision unclear, defaulting to Planner)",
-                details=["Defaulted to Planner - decision format not recognized"],
-                clear_session_id=True,
             )

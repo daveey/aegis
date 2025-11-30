@@ -24,48 +24,30 @@ wheels/
 venv/
 env/
 ENV/
-.venv/
+.venv
 
-# IDE
+# IDEs
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
-.DS_Store
 
 # Testing
 .pytest_cache/
 .coverage
 htmlcov/
 .tox/
-.hypothesis/
 
-# Environment variables
+# Environment
 .env
 .env.local
-.env.*.local
 
 # Logs
 *.log
 logs/
 
-# Database
-*.db
-*.sqlite
-*.sqlite3
-
-# Redis dump
-dump.rdb
-
-# Secrets
-secrets/
-*.pem
-*.key
-credentials.json
-
-# Temporary files
-tmp/
-temp/
-*.tmp
-.env.backup
+# OS
+.DS_Store
+Thumbs.db
+.aegis/

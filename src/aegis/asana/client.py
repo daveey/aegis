@@ -41,6 +41,42 @@ class AsanaClient:
         self.sections_api = asana.SectionsApi(self.api_client)
         self.users_api = asana.UsersApi(self.api_client)
         self.portfolios_api = asana.PortfoliosApi(self.api_client)
+        self.custom_fields_api = asana.CustomFieldsApi(self.api_client)
+        self.custom_field_settings_api = asana.CustomFieldSettingsApi(self.api_client)
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        reraise=True,
+    )
+    async def get_project_custom_fields(self, project_gid: str) -> list[dict]:
+        """Get custom field settings for a project.
+
+        Args:
+            project_gid: The GID of the project
+
+        Returns:
+            List of custom field settings
+        """
+        try:
+            settings_response = await asyncio.to_thread(
+                self.custom_field_settings_api.get_custom_field_settings_for_project,
+                project_gid,
+                {"opt_fields": "custom_field.name,custom_field.gid,custom_field.type,custom_field.enum_options"},
+            )
+
+            settings = []
+            for setting in settings_response:
+                setting_dict = setting if isinstance(setting, dict) else setting.to_dict()
+                if "custom_field" in setting_dict:
+                    settings.append(setting_dict["custom_field"])
+
+            logger.info("fetched_project_custom_fields", project_gid=project_gid, count=len(settings))
+            return settings
+
+        except ApiException as e:
+            logger.error("asana_api_error", error=str(e), project_gid=project_gid)
+            raise
 
     @retry(
         stop=stop_after_attempt(3),
@@ -131,7 +167,10 @@ class AsanaClient:
                 "html_notes",
                 "completed",
                 "completed_at",
+                "completed_at",
                 "created_at",
+                "created_by.name",
+                "created_by.email",
                 "modified_at",
                 "due_on",
                 "due_at",
@@ -195,12 +234,15 @@ class AsanaClient:
         wait=wait_exponential(multiplier=1, min=2, max=10),
         reraise=True,
     )
-    async def add_comment(self, task_gid: str, text: str) -> AsanaComment:
+    async def add_comment(
+        self, task_gid: str, text: str, is_html: bool = False
+    ) -> AsanaComment:
         """Add a comment to a task.
 
         Args:
             task_gid: The GID of the task
-            text: Comment text (supports markdown)
+            text: Comment text (supports markdown if is_html=False, or HTML if is_html=True)
+            is_html: Whether the text is HTML formatted
 
         Returns:
             AsanaComment object
@@ -208,14 +250,24 @@ class AsanaClient:
         try:
             opt_fields = ["created_at", "created_by.name", "created_by.email", "text"]
 
+            data = {}
+            if is_html:
+                data["html_text"] = text
+            else:
+                data["text"] = text
+
             story_response = await asyncio.to_thread(
                 self.stories_api.create_story_for_task,
-                {"data": {"text": text}},
+                {"data": data},
                 task_gid,
                 {"opt_fields": ",".join(opt_fields)},
             )
 
-            story_dict = story_response if isinstance(story_response, dict) else story_response.to_dict()
+            story_dict = (
+                story_response
+                if isinstance(story_response, dict)
+                else story_response.to_dict()
+            )
             comment = AsanaComment(
                 gid=story_dict["gid"],
                 created_at=story_dict["created_at"],
@@ -337,6 +389,15 @@ class AsanaClient:
                 email=task_data["assignee"].get("email"),
             )
 
+        # Parse created_by if present
+        created_by = None
+        if task_data.get("created_by"):
+            created_by = AsanaUser(
+                gid=task_data["created_by"]["gid"],
+                name=task_data["created_by"]["name"],
+                email=task_data["created_by"].get("email"),
+            )
+
         # Parse projects if present
         projects = []
         if task_data.get("projects"):
@@ -359,6 +420,7 @@ class AsanaClient:
             modified_at=task_data["modified_at"],
             due_on=task_data.get("due_on"),
             due_at=task_data.get("due_at"),
+            created_by=created_by,
             assignee=assignee,
             assignee_status=task_data.get("assignee_status"),
             projects=projects,
@@ -369,6 +431,37 @@ class AsanaClient:
             permalink_url=task_data.get("permalink_url"),
             custom_fields=task_data.get("custom_fields", []),
         )
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        reraise=True,
+    )
+    async def get_me(self) -> AsanaUser:
+        """Get the authenticated user.
+
+        Returns:
+            AsanaUser object
+        """
+        try:
+            opt_fields = ["name", "email"]
+            user_response = await asyncio.to_thread(
+                self.users_api.get_user, "me", {"opt_fields": ",".join(opt_fields)}
+            )
+
+            user_dict = user_response if isinstance(user_response, dict) else user_response.to_dict()
+            user = AsanaUser(
+                gid=user_dict["gid"],
+                name=user_dict["name"],
+                email=user_dict.get("email"),
+            )
+
+            logger.info("fetched_me", user_gid=user.gid, user_name=user.name)
+            return user
+
+        except ApiException as e:
+            logger.error("asana_api_error", error=str(e), operation="get_me")
+            raise
 
     @retry(
         stop=stop_after_attempt(3),
@@ -442,6 +535,88 @@ class AsanaClient:
 
         except ApiException as e:
             logger.error("asana_api_error", error=str(e), project_gid=project_gid)
+            raise
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        reraise=True,
+    )
+    async def update_section(
+        self, section_gid: str, name: str | None = None
+    ) -> AsanaSection:
+        """Update an existing section.
+
+        Args:
+            section_gid: The GID of the section
+            name: New name for the section
+
+        Returns:
+            Updated AsanaSection object
+        """
+        try:
+            data = {}
+            if name:
+                data["name"] = name
+
+            section_response = await asyncio.to_thread(
+                self.sections_api.update_section,
+                section_gid,
+                {"data": data},
+                {"opt_fields": "name,gid"},
+            )
+
+            section_dict = section_response if isinstance(section_response, dict) else section_response.to_dict()
+            section = AsanaSection(
+                gid=section_dict["gid"],
+                name=section_dict["name"],
+            )
+
+            logger.info("updated_section", section_gid=section_gid, updates=list(data.keys()))
+            return section
+
+        except ApiException as e:
+            logger.error("asana_api_error", error=str(e), section_gid=section_gid)
+            raise
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        reraise=True,
+    )
+    async def reorder_section(
+        self, project_gid: str, section_gid: str, after_section_gid: str | None = None, before_section_gid: str | None = None
+    ) -> None:
+        """Move a section within a project.
+
+        Args:
+            project_gid: The GID of the project
+            section_gid: The GID of the section to move
+            after_section_gid: GID of the section to insert after
+            before_section_gid: GID of the section to insert before
+        """
+        try:
+            data = {"section": section_gid}
+            if after_section_gid:
+                data["after_section"] = after_section_gid
+            elif before_section_gid:
+                data["before_section"] = before_section_gid
+
+            await asyncio.to_thread(
+                self.sections_api.insert_section_for_project,
+                project_gid,
+                {"body": {"data": data}},
+            )
+
+            logger.info(
+                "reordered_section",
+                section_gid=section_gid,
+                after=after_section_gid,
+                before=before_section_gid
+            )
+
+        except ApiException as e:
+            logger.error("asana_api_error", error=str(e), section_gid=section_gid)
             raise
 
     @retry(
@@ -664,7 +839,7 @@ class AsanaClient:
             task_response = await asyncio.to_thread(
                 self.tasks_api.create_task,
                 {"data": task_data},
-                {"opt_fields": "name,gid,notes,permalink_url"},
+                {"opt_fields": "name,gid,notes,permalink_url,created_at,modified_at"},
             )
 
             task_dict = task_response if isinstance(task_response, dict) else task_response.to_dict()
@@ -806,6 +981,68 @@ class AsanaClient:
                 public=project_dict.get("public", False),
             )
 
+            logger.info("created_project", workspace_gid=workspace_gid, project_name=name)
+            return project
+
+        except ApiException as e:
+            logger.error("asana_api_error", error=str(e), workspace_gid=workspace_gid)
+            raise
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        reraise=True,
+    )
+    async def get_portfolio_projects(self, portfolio_gid: str) -> list[AsanaProject]:
+        """Get all projects in a portfolio.
+
+        Args:
+            portfolio_gid: The GID of the portfolio
+
+        Returns:
+            List of AsanaProject objects
+        """
+        try:
+            opt_fields = ["name", "notes", "archived", "public", "resource_type"]
+
+            # Use get_items_for_portfolio to get projects
+            items_response = await asyncio.to_thread(
+                self.portfolios_api.get_items_for_portfolio,
+                portfolio_gid,
+                {"opt_fields": ",".join(opt_fields)},
+            )
+
+            projects = []
+            for item_data in items_response:
+                item_dict = item_data if isinstance(item_data, dict) else item_data.to_dict()
+
+                # Only include projects (items can be projects or portfolios)
+                if item_dict.get("resource_type") == "project":
+                    projects.append(
+                        AsanaProject(
+                            gid=item_dict["gid"],
+                            name=item_dict["name"],
+                            notes=item_dict.get("notes"),
+                            archived=item_dict.get("archived", False),
+                            public=item_dict.get("public", False),
+                        )
+                    )
+
+            logger.info("fetched_portfolio_projects", portfolio_gid=portfolio_gid, project_count=len(projects))
+            return projects
+
+        except ApiException as e:
+            logger.error("asana_api_error", error=str(e), portfolio_gid=portfolio_gid)
+            raise
+
+            project = AsanaProject(
+                gid=project_dict["gid"],
+                name=project_dict["name"],
+                notes=project_dict.get("notes"),
+                archived=project_dict.get("archived", False),
+                public=project_dict.get("public", False),
+            )
+
             logger.info("created_project", workspace_gid=workspace_gid, project_name=name, project_gid=project.gid)
             return project
 
@@ -874,44 +1111,30 @@ class AsanaClient:
         wait=wait_exponential(multiplier=1, min=2, max=10),
         reraise=True,
     )
-    async def get_projects_from_portfolio(self, portfolio_gid: str) -> list[AsanaProject]:
-        """Get all projects from a portfolio.
+    async def add_custom_field_to_project(self, project_gid: str, custom_field_gid: str) -> None:
+        """Add a custom field to a project.
 
         Args:
-            portfolio_gid: The GID of the portfolio
-
-        Returns:
-            List of AsanaProject objects
+            project_gid: The GID of the project
+            custom_field_gid: The GID of the custom field to add
         """
         try:
-            opt_fields = ["name", "notes", "archived", "public", "permalink_url", "team.name", "workspace.name"]
-
-            projects_response = await asyncio.to_thread(
-                self.portfolios_api.get_items_for_portfolio,
-                portfolio_gid,
-                {"opt_fields": ",".join(opt_fields)},
+            await asyncio.to_thread(
+                self.projects_api.add_custom_field_setting_for_project,
+                {"data": {"custom_field": custom_field_gid}},
+                project_gid,
+                {},
             )
-
-            projects = []
-            for project_data in projects_response:
-                project_dict = project_data if isinstance(project_data, dict) else project_data.to_dict()
-                projects.append(
-                    AsanaProject(
-                        gid=project_dict["gid"],
-                        name=project_dict["name"],
-                        notes=project_dict.get("notes"),
-                        archived=project_dict.get("archived", False),
-                        public=project_dict.get("public", False),
-                    )
-                )
 
             logger.info(
-                "fetched_projects_from_portfolio",
-                portfolio_gid=portfolio_gid,
-                project_count=len(projects),
+                "added_custom_field_to_project",
+                project_gid=project_gid,
+                custom_field_gid=custom_field_gid,
             )
-            return projects
 
         except ApiException as e:
-            logger.error("asana_api_error", error=str(e), portfolio_gid=portfolio_gid)
+            logger.error("asana_api_error", error=str(e), project_gid=project_gid)
             raise
+
+
+

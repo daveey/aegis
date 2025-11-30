@@ -159,7 +159,7 @@ The Aegis codebase has been completely restructured according to the new swarm d
 
 ### Phase 4: Tools & Configuration ✅
 
-**Section Sync Tool** (`tools/sync_asana_sections.py`, 218 lines):
+**Project Sync Tool** (`tools/sync_asana_project.py`):
 - Enforces canonical section structure
 - Creates missing sections
 - Detects unknown sections (preserves them)
@@ -169,13 +169,13 @@ The Aegis codebase has been completely restructured according to the new swarm d
 **Usage**:
 ```bash
 # Sync single project
-python tools/sync_asana_sections.py --project PROJECT_GID
+python tools/sync_asana_project.py --project PROJECT_GID
 
-# Sync entire portfolio
-python tools/sync_asana_sections.py --portfolio PORTFOLIO_GID
+# Sync all projects in portfolio
+python tools/sync_asana_project.py --portfolio PORTFOLIO_GID
 
 # Dry run (preview changes)
-python tools/sync_asana_sections.py --project PROJECT_GID --dry-run
+python tools/sync_asana_project.py --project PROJECT_GID --dry-run
 ```
 
 ---
@@ -281,7 +281,7 @@ aegis/
 │   └── ...
 │
 ├── tools/                     # NEW: Management tools
-│   └── sync_asana_sections.py
+│   └── sync_asana_project.py
 │
 ├── prompts/                   # NEW: Agent prompts
 │   ├── triage.md
@@ -372,8 +372,8 @@ aegis/
 
 5. **Sync Project Sections**:
    ```bash
-   python tools/sync_asana_sections.py --project {PROJECT_GID} --dry-run
-   python tools/sync_asana_sections.py --project {PROJECT_GID}
+   python tools/sync_asana_project.py --project {PROJECT_GID} --dry-run
+   python tools/sync_asana_project.py --project {PROJECT_GID}
    ```
 
 6. **Initialize Memory Files**:

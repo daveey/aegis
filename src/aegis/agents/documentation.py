@@ -4,11 +4,12 @@ from pathlib import Path
 
 import structlog
 
-from aegis.agents.base import AgentResult, BaseAgent
-from aegis.asana.models import AsanaTask
+from aegis.agents.base import AgentResult, BaseAgent, AgentTargetType
+from aegis.asana.models import AsanaTask, AsanaProject
 from aegis.infrastructure.memory_manager import MemoryManager
+from aegis.utils.asana_utils import format_asana_resource
 
-logger = structlog.get_logger()
+logger = structlog.get_logger(__name__)
 
 
 class DocumentationAgent(BaseAgent):
@@ -33,12 +34,17 @@ class DocumentationAgent(BaseAgent):
     @property
     def name(self) -> str:
         """Agent name."""
-        return "Documentation Agent"
+        return "documentation_agent"
 
     @property
     def status_emoji(self) -> str:
         """Status emoji."""
         return "📚"
+
+    @property
+    def target_type(self) -> AgentTargetType:
+        """Target type."""
+        return AgentTargetType.TASK
 
     def get_prompt(self, task: AsanaTask) -> str:
         """Generate prompt for documentation update.
@@ -49,7 +55,7 @@ class DocumentationAgent(BaseAgent):
         Returns:
             Prompt text
         """
-        prompt_file = Path(__file__).parent.parent.parent.parent / "prompts" / "documentation.md"
+        prompt_file = Path(__file__).parent.parent.parent.parent / "prompts" / "documentation.prompt.txt"
 
         if not prompt_file.exists():
             logger.warning("documentation_prompt_not_found", prompt_file=str(prompt_file))
@@ -95,18 +101,22 @@ Analyze the request and update the appropriate documentation file(s).
 
         return context
 
-    async def execute(self, task: AsanaTask, **kwargs) -> AgentResult:
+    async def execute(self, target: AsanaTask | AsanaProject, **kwargs) -> AgentResult:
         """Execute documentation update.
 
         Args:
-            task: AsanaTask with documentation request
+            target: AsanaTask with documentation request
             **kwargs: Additional arguments (interactive, etc.)
 
         Returns:
             AgentResult with update status
         """
+        if not isinstance(target, AsanaTask):
+             return AgentResult(success=False, error="DocumentationAgent only supports Tasks")
+
+        task = target
         interactive = kwargs.get("interactive", False)
-        logger.info("documentation_start", task_gid=task.gid, task_name=task.name, interactive=interactive)
+        logger.info("documentation_start", task=format_asana_resource(task), interactive=interactive)
 
         try:
             # Determine if this is a preference or memory update
@@ -131,7 +141,7 @@ Analyze the request and update the appropriate documentation file(s).
                 )
 
             if returncode != 0:
-                logger.error("documentation_failed", task_gid=task.gid, stderr=stderr)
+                logger.error("documentation_failed", task=format_asana_resource(task), stderr=stderr)
                 return AgentResult(
                     success=False,
                     error=f"Claude Code failed: {stderr}",
@@ -152,7 +162,7 @@ Analyze the request and update the appropriate documentation file(s).
 
             logger.info(
                 "documentation_complete",
-                task_gid=task.gid,
+                task=format_asana_resource(task),
                 is_preference=is_preference,
                 compacted=compacted,
             )
@@ -165,7 +175,7 @@ Analyze the request and update the appropriate documentation file(s).
             )
 
         except Exception as e:
-            logger.error("documentation_error", task_gid=task.gid, error=str(e))
+            logger.error("documentation_error", task=format_asana_resource(task), error=str(e))
             return AgentResult(
                 success=False,
                 error=str(e),

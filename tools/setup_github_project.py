@@ -566,20 +566,15 @@ Design Document:
 
 Respond with ONLY valid JSON, no additional text."""
 
-    # Write prompt to temporary file
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-        prompt_file = Path(f.name)
-        f.write(prompt)
-
     try:
         # Run Claude Code in headless mode
         result = subprocess.run(
             [
                 "claude",
+                "-p",
                 "--dangerously-skip-permissions",
-                "--prompt-file",
-                str(prompt_file),
             ],
+            input=prompt,
             capture_output=True,
             text=True,
             check=True,
@@ -603,9 +598,6 @@ Respond with ONLY valid JSON, no additional text."""
         logger.error("claude_analysis_failed", error=str(e))
         print(f"⚠ Claude analysis failed, using default structure: {e}")
         return _default_analysis(project_name, language)
-
-    finally:
-        prompt_file.unlink(missing_ok=True)
 
 
 def _default_analysis(project_name: str, language: str) -> dict[str, Any]:
@@ -929,7 +921,7 @@ def main() -> None:
             f"- Added project structure\n"
             f"- Added GitHub Actions CI\n"
             f"- Added README and documentation\n"
-            f"{'- Analyzed design document with Claude\n' if analysis else ''}"
+            f"{'- Analyzed design document with Claude' + chr(10) if analysis else ''}"
             f"\n🤖 Generated with Aegis",
         )
     except subprocess.CalledProcessError as e:

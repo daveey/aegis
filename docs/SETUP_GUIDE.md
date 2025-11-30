@@ -76,10 +76,12 @@ This creates:
 
 ```bash
 # Sync one project
-python tools/sync_asana_sections.py --project "Project Name"
+python tools/sync_asana_project.py --project "Project Name"
+```
 
-# Or sync all projects in portfolio
-python tools/sync_asana_sections.py --portfolio
+Or for an entire portfolio:
+```bash
+python tools/sync_asana_project.py --portfolio
 ```
 
 This adds 8 canonical sections:

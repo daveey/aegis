@@ -728,6 +728,10 @@ All task executions post results to Asana as comments:
 - [ ] Review API usage and costs
 - [ ] Check for Aegis updates: `git pull && uv pip install -U -e .`
 
+### Testing the Dashboard
+
+For instructions on how to test the Aegis Dashboard using an LLM (Antigravity), please refer to [DASHBOARD_TESTING.md](DASHBOARD_TESTING.md).
+
 ---
 
 ## Troubleshooting

@@ -1,6 +1,10 @@
 {
   "canonical_sections": [
     {
+      "name": "Proposals",
+      "description": "Automated suggestions for refactoring, features, and consolidation"
+    },
+    {
       "name": "Drafts",
       "description": "Passive holding area for new tasks"
     },
@@ -38,15 +42,42 @@
       "name": "Agent",
       "type": "enum",
       "options": [
-        {"name": "Triage", "enabled": true},
-        {"name": "Planner", "enabled": true},
-        {"name": "Worker", "enabled": true},
-        {"name": "Reviewer", "enabled": true},
-        {"name": "Merger", "enabled": true},
-        {"name": "Refactor", "enabled": true},
-        {"name": "Consolidator", "enabled": true},
-        {"name": "Ideation", "enabled": true},
-        {"name": "Documentation", "enabled": true}
+        {
+          "name": "Triage",
+          "enabled": true
+        },
+        {
+          "name": "Planner",
+          "enabled": true
+        },
+        {
+          "name": "Worker",
+          "enabled": true
+        },
+        {
+          "name": "Reviewer",
+          "enabled": true
+        },
+        {
+          "name": "Merger",
+          "enabled": true
+        },
+        {
+          "name": "Refactor",
+          "enabled": true
+        },
+        {
+          "name": "Consolidator",
+          "enabled": true
+        },
+        {
+          "name": "Ideation",
+          "enabled": true
+        },
+        {
+          "name": "Documentation",
+          "enabled": true
+        }
       ],
       "default": "Triage",
       "description": "Active agent persona for this task"
@@ -55,10 +86,22 @@
       "name": "Swarm Status",
       "type": "enum",
       "options": [
-        {"name": "Idle", "enabled": true},
-        {"name": "Running", "enabled": true},
-        {"name": "Blocked", "enabled": true},
-        {"name": "Complete", "enabled": true}
+        {
+          "name": "Idle",
+          "enabled": true
+        },
+        {
+          "name": "Running",
+          "enabled": true
+        },
+        {
+          "name": "Blocked",
+          "enabled": true
+        },
+        {
+          "name": "Complete",
+          "enabled": true
+        }
       ],
       "description": "Current execution state"
     },
@@ -68,7 +111,7 @@
       "description": "UUID for execution continuity and log linking"
     },
     {
-      "name": "Cost",
+      "name": "Actual Cost",
       "type": "number",
       "precision": 2,
       "description": "Accumulated cost in USD"
@@ -84,9 +127,18 @@
       "name": "Merge Approval",
       "type": "enum",
       "options": [
-        {"name": "Auto-Approve", "enabled": true},
-        {"name": "Manual Check", "enabled": true},
-        {"name": "Approved", "enabled": true}
+        {
+          "name": "Auto-Approve",
+          "enabled": true
+        },
+        {
+          "name": "Manual Check",
+          "enabled": true
+        },
+        {
+          "name": "Approved",
+          "enabled": true
+        }
       ],
       "default": "Auto-Approve",
       "description": "Safety gate for code integration"

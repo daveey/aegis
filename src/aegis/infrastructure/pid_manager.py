@@ -21,13 +21,27 @@ class PIDManager:
     Ensures only one instance of the orchestrator runs at a time.
     """
 
-    def __init__(self, pid_file: Path | str = ".aegis.pid"):
+    def __init__(self, project_gid: str | None = None, pid_file: Path | str | None = None, root_dir: Path | str | None = None):
         """Initialize PID manager.
 
         Args:
-            pid_file: Path to PID file (default: .aegis.pid in current directory)
+            project_gid: Asana Project GID (for centralized PID management)
+            pid_file: Explicit path to PID file (legacy/override)
+            root_dir: Root directory for the project (default: current directory)
         """
-        self.pid_file = Path(pid_file)
+        self.root_dir = Path(root_dir) if root_dir else Path.cwd()
+
+        if pid_file:
+            self.pid_file = Path(pid_file)
+        elif project_gid:
+            # Use centralized PID location for tracked projects
+            self.pid_file = self.root_dir / ".aegis" / "pids" / f"{project_gid}.pid"
+        else:
+            # Default legacy location
+            self.pid_file = self.root_dir / ".aegis" / "pid"
+
+        if not self.pid_file.parent.exists():
+            self.pid_file.parent.mkdir(parents=True, exist_ok=True)
         self._locked = False
 
     def acquire(self) -> None:
@@ -144,19 +158,22 @@ class PIDManager:
                 except ProcessLookupError:
                     # Process exited
                     logger.info("orchestrator_stopped_gracefully", pid=pid, elapsed=elapsed)
-                    self.release()
+                    if self.pid_file.exists():
+                        self.pid_file.unlink()
                     return True
 
             # Timeout - force kill
             logger.warning("orchestrator_timeout_forcing_kill", pid=pid, timeout=timeout)
             os.kill(pid, signal.SIGKILL)
-            self.release()
+            if self.pid_file.exists():
+                self.pid_file.unlink()
             return True
 
         except ProcessLookupError:
             # Process already gone
             logger.info("orchestrator_already_stopped", pid=pid)
-            self.release()
+            if self.pid_file.exists():
+                self.pid_file.unlink()
             return False
         except PermissionError as e:
             logger.error("orchestrator_stop_permission_denied", pid=pid, error=str(e))

@@ -5,11 +5,12 @@ from pathlib import Path
 
 import structlog
 
-from aegis.agents.base import AgentResult, BaseAgent
-from aegis.asana.models import AsanaTask
+from aegis.agents.base import AgentResult, BaseAgent, AgentTargetType
+from aegis.asana.models import AsanaTask, AsanaProject
 from aegis.infrastructure.worktree_manager import WorktreeManager
+from aegis.utils.asana_utils import format_asana_resource
 
-logger = structlog.get_logger()
+logger = structlog.get_logger(__name__)
 
 
 class MergerAgent(BaseAgent):
@@ -36,12 +37,17 @@ class MergerAgent(BaseAgent):
     @property
     def name(self) -> str:
         """Agent name."""
-        return "Merger Agent"
+        return "merger_agent"
 
     @property
     def status_emoji(self) -> str:
         """Status emoji."""
         return "🔀"
+
+    @property
+    def target_type(self) -> AgentTargetType:
+        """Target type."""
+        return AgentTargetType.TASK
 
     def get_prompt(self, task: AsanaTask) -> str:
         """Generate prompt for merge operation.
@@ -52,7 +58,7 @@ class MergerAgent(BaseAgent):
         Returns:
             Prompt text
         """
-        prompt_file = Path(__file__).parent.parent.parent.parent / "prompts" / "merger.md"
+        prompt_file = Path(__file__).parent.parent.parent.parent / "prompts" / "merger.prompt.txt"
 
         if not prompt_file.exists():
             logger.warning("merger_prompt_not_found", prompt_file=str(prompt_file))
@@ -88,23 +94,27 @@ NEVER skip steps or force anything.
 
         return context
 
-    async def execute(self, task: AsanaTask, **kwargs) -> AgentResult:
+    async def execute(self, target: AsanaTask | AsanaProject, **kwargs) -> AgentResult:
         """Execute safe merge.
 
         Args:
-            task: AsanaTask to merge
+            target: AsanaTask to merge
             **kwargs: Additional arguments (interactive, etc.)
 
         Returns:
             AgentResult with merge status
         """
+        if not isinstance(target, AsanaTask):
+             return AgentResult(success=False, error="MergerAgent only supports Tasks")
+
+        task = target
         interactive = kwargs.get("interactive", False)
-        logger.info("merge_start", task_gid=task.gid, task_name=task.name, interactive=interactive)
+        logger.info("merge_start", task=format_asana_resource(task), interactive=interactive)
 
         try:
             # Check merge approval
             if not self._check_merge_approval(task) and not interactive:
-                logger.warning("merge_approval_required", task_gid=task.gid)
+                logger.warning("merge_approval_required", task=format_asana_resource(task))
                 return AgentResult(
                     success=False,
                     next_section="Clarification Needed",
@@ -140,7 +150,7 @@ NEVER skip steps or force anything.
             # Cleanup
             self.worktree_manager.cleanup_task(task.gid)
 
-            logger.info("merge_complete", task_gid=task.gid, merge_commit=merge_commit)
+            logger.info("merge_complete", task=format_asana_resource(task), merge_commit=merge_commit)
 
             return AgentResult(
                 success=True,
@@ -155,7 +165,7 @@ NEVER skip steps or force anything.
             )
 
         except MergeConflictError as e:
-            logger.error("merge_conflict", task_gid=task.gid, error=str(e))
+            logger.error("merge_conflict", task=format_asana_resource(task), error=str(e))
             return AgentResult(
                 success=False,
                 next_section="Clarification Needed",
@@ -164,7 +174,7 @@ NEVER skip steps or force anything.
             )
 
         except MergeTestFailureError as e:
-            logger.error("merge_test_failure", task_gid=task.gid, error=str(e))
+            logger.error("merge_test_failure", task=format_asana_resource(task), error=str(e))
             return AgentResult(
                 success=False,
                 next_agent="Reviewer",
@@ -174,7 +184,7 @@ NEVER skip steps or force anything.
             )
 
         except Exception as e:
-            logger.error("merge_error", task_gid=task.gid, error=str(e))
+            logger.error("merge_error", task=format_asana_resource(task), error=str(e))
             return AgentResult(
                 success=False,
                 error=str(e),
@@ -273,7 +283,7 @@ NEVER skip steps or force anything.
             ).stdout.strip()
 
             # Run tests
-            logger.info("running_post_merge_tests", task_gid=task.gid)
+            logger.info("running_post_merge_tests", task=format_asana_resource(task))
             test_result = subprocess.run(
                 ["pytest", "tests/", "-v"],
                 cwd=self.merger_worktree,
@@ -295,7 +305,7 @@ NEVER skip steps or force anything.
             test_results = "All tests passed"
 
             # Push to main
-            logger.info("pushing_to_main", task_gid=task.gid)
+            logger.info("pushing_to_main", task=format_asana_resource(task))
             subprocess.run(
                 ["git", "push", "origin", "main"],
                 cwd=self.merger_worktree,

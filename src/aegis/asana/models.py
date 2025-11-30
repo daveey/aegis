@@ -73,6 +73,7 @@ class AsanaTask(BaseModel):
     due_on: str | None = None
     due_at: datetime | None = None
 
+    created_by: AsanaUser | None = None
     assignee: AsanaUser | None = None
     assignee_status: str | None = None
 

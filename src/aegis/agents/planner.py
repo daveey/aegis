@@ -4,10 +4,11 @@ from pathlib import Path
 
 import structlog
 
-from aegis.agents.base import AgentResult, BaseAgent
-from aegis.asana.models import AsanaTask
+from aegis.agents.base import AgentResult, BaseAgent, AgentTargetType
+from aegis.asana.models import AsanaTask, AsanaProject
+from aegis.utils.asana_utils import format_asana_resource
 
-logger = structlog.get_logger()
+logger = structlog.get_logger(__name__)
 
 
 class PlannerAgent(BaseAgent):
@@ -24,12 +25,17 @@ class PlannerAgent(BaseAgent):
     @property
     def name(self) -> str:
         """Agent name."""
-        return "Planner Agent"
+        return "planner_agent"
 
     @property
     def status_emoji(self) -> str:
         """Status emoji."""
         return "📐"
+
+    @property
+    def target_type(self) -> AgentTargetType:
+        """Target type."""
+        return AgentTargetType.TASK
 
     def get_prompt(self, task: AsanaTask) -> str:
         """Generate prompt for planning.
@@ -40,7 +46,7 @@ class PlannerAgent(BaseAgent):
         Returns:
             Prompt text
         """
-        prompt_file = Path(__file__).parent.parent.parent.parent / "prompts" / "planner.md"
+        prompt_file = Path(__file__).parent.parent.parent.parent / "prompts" / "planner.prompt.txt"
 
         if not prompt_file.exists():
             logger.warning("planner_prompt_not_found", prompt_file=str(prompt_file))
@@ -87,18 +93,22 @@ Use the Plan → Critique → Refine process (2-3 iterations) to ensure quality.
 
         return context
 
-    async def execute(self, task: AsanaTask, **kwargs) -> AgentResult:
+    async def execute(self, target: AsanaTask | AsanaProject, **kwargs) -> AgentResult:
         """Execute planning.
 
         Args:
-            task: AsanaTask to plan
+            target: AsanaTask to plan
             **kwargs: Additional arguments (interactive, etc.)
 
         Returns:
             AgentResult with plan and next steps
         """
+        if not isinstance(target, AsanaTask):
+             return AgentResult(success=False, error="PlannerAgent only supports Tasks")
+
+        task = target
         interactive = kwargs.get("interactive", False)
-        logger.info("planning_start", task_gid=task.gid, task_name=task.name, interactive=interactive)
+        logger.info("planning_start", task=format_asana_resource(task), interactive=interactive)
 
         try:
             # Generate and run prompt
@@ -117,17 +127,37 @@ Use the Plan → Critique → Refine process (2-3 iterations) to ensure quality.
                 )
 
             if returncode != 0:
-                logger.error("planning_failed", task_gid=task.gid, stderr=stderr)
+                logger.error("planning_failed", task=format_asana_resource(task), stderr=stderr)
                 return AgentResult(
                     success=False,
                     error=f"Claude Code failed: {stderr}",
                     summary="Planning failed due to execution error",
                 )
 
+            # Check for blocker
+            if "## BLOCKER ENCOUNTERED" in stdout:
+                import re
+                blocker_match = re.search(
+                    r"## BLOCKER ENCOUNTERED\s*(.+?)(?:$)",
+                    stdout,
+                    re.IGNORECASE | re.DOTALL,
+                )
+                blocker_details = blocker_match.group(1).strip() if blocker_match else "No details provided"
+
+                return AgentResult(
+                    success=False,
+                    next_agent="Triage",
+                    next_section="Clarification Needed",
+                    summary="Planning blocked",
+                    details=["Blocker encountered:", blocker_details[:500]],
+                    clear_session_id=False,
+                    assignee="me",
+                )
+
             # Plan is complete - route to Worker
             plan_summary = self._extract_summary(stdout)
 
-            logger.info("planning_complete", task_gid=task.gid, plan_length=len(stdout))
+            logger.info("planning_complete", task=format_asana_resource(task), plan_length=len(stdout))
 
             # Post plan as comment
             # (The orchestrator will handle posting via post_result_comment)
@@ -146,7 +176,7 @@ Use the Plan → Critique → Refine process (2-3 iterations) to ensure quality.
             )
 
         except Exception as e:
-            logger.error("planning_error", task_gid=task.gid, error=str(e))
+            logger.error("planning_error", task=format_asana_resource(task), error=str(e))
             return AgentResult(
                 success=False,
                 error=str(e),

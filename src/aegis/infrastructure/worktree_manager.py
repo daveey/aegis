@@ -27,7 +27,7 @@ class WorktreeManager:
     def __init__(
         self,
         repo_root: Path | str,
-        worktree_dir: Path | str = "_worktrees",
+        worktree_dir: Path | str = ".aegis/worktrees",
         hydration_command: str = "uv sync",
     ):
         """Initialize worktree manager.
@@ -44,14 +44,20 @@ class WorktreeManager:
         # Ensure worktree directory exists
         self.worktree_dir.mkdir(parents=True, exist_ok=True)
 
-        # Ensure it's in .gitignore
+        # Ensure .aegis is in .gitignore
         gitignore = self.repo_root / ".gitignore"
+        ignore_entry = ".aegis/"
+
         if gitignore.exists():
             content = gitignore.read_text()
-            if worktree_dir not in content:
-                gitignore.write_text(content + f"\n{worktree_dir}/\n")
+            # Check if .aegis/ is already ignored
+            if ignore_entry not in content and ".aegis" not in content:
+                # Append to end, ensuring newline
+                if not content.endswith("\n"):
+                    content += "\n"
+                gitignore.write_text(content + f"{ignore_entry}\n")
         else:
-            gitignore.write_text(f"{worktree_dir}/\n")
+            gitignore.write_text(f"{ignore_entry}\n")
 
     def create_worktree(self, task_gid: str) -> Path:
         """Create worktree for a task.

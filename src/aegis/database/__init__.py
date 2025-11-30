@@ -12,7 +12,7 @@ from aegis.database.models import (
     TaskExecution,
     Webhook,
 )
-from aegis.database.session import get_db, get_db_session, init_db
+from aegis.database.session import get_db_session, init_db
 
 __all__ = [
     "Base",
@@ -26,6 +26,5 @@ __all__ = [
     "SystemState",
     "Webhook",
     "init_db",
-    "get_db",
     "get_db_session",
 ]
