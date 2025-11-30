@@ -267,6 +267,8 @@ class BaseAgent(ABC):
             log_kwargs["project"] = project_name
 
         self.logger.info("running_claude_code", **log_kwargs)
+        if log_path:
+            print(f"session_log_path= {log_path}")
 
         try:
             if interactive:

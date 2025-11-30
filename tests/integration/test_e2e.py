@@ -653,7 +653,7 @@ class TestCLIIntegration:
         import subprocess
 
         result = subprocess.run(
-            ["aegis", "config"],
+            ["aegis", "configure", "--show"],
             capture_output=True,
             text=True,
             timeout=10,
@@ -681,7 +681,7 @@ class TestCLIIntegration:
 
         # Should succeed and show portfolio info
         assert result.returncode == 0
-        assert "Testing Asana connection" in result.stdout or "Asana API connection successful" in result.stdout
+        assert "Testing Asana Connection" in result.stdout or "Asana API connection successful" in result.stdout
 
 
 @pytest.mark.skipif(

@@ -8,7 +8,8 @@ dependencies = [
     "streamlit>=1.32.0",
     "watchdog>=4.0.0",
     "click>=8.0.0",
-    "structlog>=24.0.0",
+    "structlog>=24.1.0",
+    "ray>=2.9.0",
     "rich>=13.0.0",
     "asana>=5.0.0",
     "pydantic>=2.0.0",
@@ -37,3 +38,7 @@ build-backend = "hatchling.build"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "integration: mark test as integration test",
+    "asyncio: mark test as asyncio test",
+]

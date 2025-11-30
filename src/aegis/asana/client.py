@@ -349,7 +349,7 @@ class AsanaClient:
             AsanaProject object
         """
         try:
-            opt_fields = ["name", "notes", "archived", "public"]
+            opt_fields = ["name", "notes", "archived", "public", "workspace"]
 
             project_response = await asyncio.to_thread(
                 self.projects_api.get_project, project_gid, {"opt_fields": ",".join(opt_fields)}
@@ -362,6 +362,7 @@ class AsanaClient:
                 notes=project_dict.get("notes"),
                 archived=project_dict.get("archived", False),
                 public=project_dict.get("public", False),
+                workspace_gid=project_dict.get("workspace", {}).get("gid") if project_dict.get("workspace") else None,
             )
 
             logger.info("fetched_project", project_gid=project_gid, project_name=project.name)

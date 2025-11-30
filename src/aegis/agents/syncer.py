@@ -19,6 +19,7 @@ from aegis.database.crud import (
     create_project, update_project, get_project_by_gid
 )
 from aegis.infrastructure.asana_service import AsanaService
+from aegis.asana.client import AsanaClient
 from aegis.agents.base import BaseAgent, AgentTargetType
 
 logger = structlog.get_logger(__name__)
@@ -176,7 +177,8 @@ class SyncerAgent(BaseAgent):
 
 @click.command()
 @click.option("--project-gid", required=True, help="Asana Project GID")
-def main(project_gid: str):
+@click.option("--session-id", required=False, help="Session ID for logging")
+def main(project_gid: str, session_id: str | None):
     """Run the Syncer Agent."""
     # Setup logging
     logging_config = {
@@ -203,13 +205,15 @@ def main(project_gid: str):
     logging.config.dictConfig(logging_config)
 
     settings = get_settings()
-    asana_service = AsanaService(settings)
+    asana_client = AsanaClient(settings.asana_access_token)
+    asana_service = AsanaService(asana_client)
 
     agent = SyncerAgent(
         project_gid=project_gid,
         asana_service=asana_service,
         repo_root=Path.cwd(), # Or pass via args
-        agent_id=f"syncer-{project_gid}"
+        agent_id=f"syncer-{project_gid}",
+        session_id=session_id
     )
 
     asyncio.run(agent.run_forever())

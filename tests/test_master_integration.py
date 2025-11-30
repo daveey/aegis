@@ -22,10 +22,22 @@ async def test_master_process_startup():
     os.chdir(test_dir)
 
     # Create fake project DBs to simulate tracked projects
-    projects_dir = test_dir / ".aegis" / "projects"
-    projects_dir.mkdir(parents=True)
-    (projects_dir / "12345.sqlite").touch()
-    (projects_dir / "67890.sqlite").touch()
+    # Create projects.yaml
+    projects_file = test_dir / ".aegis" / "projects.yaml"
+    projects_dir = test_dir / ".aegis" / "projects" # Keep this if code expects it, but tracker uses yaml
+    projects_dir.mkdir(parents=True, exist_ok=True)
+
+    import yaml
+    projects_data = {
+        "12345": {"gid": "12345", "name": "Project 1", "local_path": str(test_dir / "p1"), "added_at": "2025-01-01"},
+        "67890": {"gid": "67890", "name": "Project 2", "local_path": str(test_dir / "p2"), "added_at": "2025-01-01"},
+    }
+    with open(projects_file, "w") as f:
+        yaml.dump(projects_data, f)
+
+    # Create dummy project directories
+    (test_dir / "p1").mkdir()
+    (test_dir / "p2").mkdir()
 
     master = MasterProcess()
 

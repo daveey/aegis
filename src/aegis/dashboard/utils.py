@@ -37,7 +37,8 @@ def load_swarm_state() -> Dict[str, Any]:
 
 def get_all_project_states() -> List[Dict[str, Any]]:
     """Get state for all tracked projects."""
-    tracker = ProjectTracker()
+    root = get_project_root()
+    tracker = ProjectTracker(config_dir=root / ".aegis")
     projects = tracker.get_projects()
     states = []
 
@@ -117,12 +118,20 @@ def get_active_tasks(state: Dict[str, Any] = None) -> List[Dict[str, Any]]:
 
     # Otherwise fetch from all projects
     project_states = get_all_project_states()
+    seen_gids = set()
+
     for p in project_states:
         orch = p["state"].get("orchestrator", {})
         details = orch.get("active_tasks_details", [])
 
         if details:
             for task in details:
+                gid = task.get("gid")
+                if gid and gid in seen_gids:
+                    continue
+                if gid:
+                    seen_gids.add(gid)
+
                 task["project_name"] = p["name"]
                 task["project_gid"] = p["gid"]
                 all_tasks.append(task)
@@ -130,6 +139,10 @@ def get_active_tasks(state: Dict[str, Any] = None) -> List[Dict[str, Any]]:
             # Fallback
             gids = orch.get("active_tasks", [])
             for gid in gids:
+                 if gid in seen_gids:
+                     continue
+                 seen_gids.add(gid)
+
                  all_tasks.append({
                     "gid": gid,
                     "name": "Unknown Task",
@@ -293,10 +306,20 @@ def get_global_activity_feed(limit: int = 20) -> List[Dict[str, Any]]:
     """Get a consolidated list of recent events from all projects."""
     states = get_all_project_states()
     all_events = []
+    seen_events = set()
 
     for p in states:
         events = p["state"].get("orchestrator", {}).get("recent_events", [])
         for evt in events:
+            # Create a signature for deduplication
+            # We exclude project_name since that's added by us
+            sig = (evt.get("timestamp"), evt.get("type"), json.dumps(evt.get("details", {}), sort_keys=True))
+
+            if sig in seen_events:
+                continue
+
+            seen_events.add(sig)
+
             # Add project name to event for context
             evt_copy = evt.copy()
             evt_copy["project_name"] = p["name"]
@@ -311,3 +334,14 @@ def get_global_activity_feed(limit: int = 20) -> List[Dict[str, Any]]:
 
     return all_events[:limit]
 
+def get_syncer_info(project_path: str) -> Dict[str, Any]:
+    """Get syncer session info for a project."""
+    try:
+        path = Path(project_path)
+        info_file = path / ".aegis" / "syncer_info.json"
+        if info_file.exists():
+            with open(info_file, "r") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}

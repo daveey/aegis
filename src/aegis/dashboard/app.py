@@ -1,3 +1,10 @@
+import sys
+from pathlib import Path
+
+# Add src to path to ensure we use local modules
+root_path = Path(__file__).parent.parent.parent.parent
+sys.path.append(str(root_path / "src"))
+
 import streamlit as st
 import time
 import pandas as pd
@@ -40,7 +47,9 @@ else:
         st.sidebar.markdown(f":{status_color}[●] **{p['name']}**: {status_text}")
 
 # Navigation
-page = st.sidebar.radio("Navigation", ["Overview", "Active Tasks", "Session Logs", "Memory", "Settings"])
+if "nav_radio" not in st.session_state:
+    st.session_state.nav_radio = "Overview"
+page = st.sidebar.radio("Navigation", ["Overview", "Active Tasks", "Session Logs", "Memory", "Settings"], key="nav_radio")
 
 # --- Main Content ---
 
@@ -92,6 +101,16 @@ if page == "Overview":
                         if st.button(f"Manage {p['name']}", key=f"btn_{p['gid']}"):
                             # In a real app we might redirect, but for now just a toast
                             st.toast(f"Switch to {p['name']} in sidebar to manage.")
+
+                        # Syncer Log Link
+                        syncer_info = utils.get_syncer_info(p["path"])
+                        if syncer_info:
+                            sid = syncer_info.get("session_id")
+                            if sid:
+                                if st.button(f"View Syncer Log", key=f"btn_log_{p['gid']}"):
+                                    st.session_state.nav_radio = "Session Logs"
+                                    st.session_state.target_session_id = sid
+                                    st.rerun()
 
         st.divider()
 
@@ -227,9 +246,17 @@ elif page == "Session Logs":
          project_path = current_project_state["path"]
 
     # Allow user to input session ID or pick from list if we can list them
-    session_id = st.query_params.get("session_id", None)
 
-    search_id = st.text_input("Enter Session ID", value=session_id if session_id else "")
+    # Check session state for target session ID (from Overview button)
+    target_sid = st.session_state.get("target_session_id")
+    if target_sid:
+        # Clear it so it doesn't persist if user navigates away and back
+        del st.session_state.target_session_id
+        default_val = target_sid
+    else:
+        default_val = st.query_params.get("session_id", "")
+
+    search_id = st.text_input("Enter Session ID", value=default_val)
 
     if search_id:
         st.subheader(f"Log for Session: {search_id}")

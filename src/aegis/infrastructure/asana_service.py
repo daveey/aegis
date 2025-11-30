@@ -96,6 +96,17 @@ class AsanaService:
         """
         return await self.client.get_project(project_gid)
 
+    async def get_tasks_in_project(self, project_gid: str) -> list[AsanaTask]:
+        """Get all tasks in a project.
+
+        Args:
+            project_gid: Project GID
+
+        Returns:
+            List of AsanaTask objects
+        """
+        return await self.client.get_tasks_from_project(project_gid)
+
     # -------------------------------------------------------------------------
     # Custom Field Helpers
     # -------------------------------------------------------------------------

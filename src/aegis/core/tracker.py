@@ -14,6 +14,7 @@ class TrackedProject(BaseModel):
     gid: str
     name: str
     local_path: str
+    github_repo: Optional[str] = None
     added_at: str
 
 
@@ -59,13 +60,14 @@ class ProjectTracker:
         with open(self.projects_file, "w") as f:
             yaml.safe_dump(projects, f)
 
-    def add_project(self, gid: str, name: str, local_path: str | Path):
+    def add_project(self, gid: str, name: str, local_path: str | Path, github_repo: str | None = None):
         """Add a project to tracking.
 
         Args:
             gid: Asana Project GID
             name: Project Name
             local_path: Local filesystem path
+            github_repo: GitHub repository (owner/repo)
         """
         from datetime import datetime
 
@@ -75,6 +77,7 @@ class ProjectTracker:
             "gid": gid,
             "name": name,
             "local_path": str(local_path),
+            "github_repo": github_repo,
             "added_at": datetime.now().isoformat()
         }
 

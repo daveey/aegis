@@ -75,24 +75,41 @@ def start(project: str | None, no_dashboard: bool):
         # Start dashboard in background
         dashboard_port = 8501
         console.print(f"[green]Starting dashboard at http://localhost:{dashboard_port}[/green]")
+
+        # Log dashboard output to file
+        log_file = open("dashboard.log", "w")
         subprocess.Popen(
             [sys.executable, "-m", "streamlit", "run", "src/aegis/dashboard/app.py", "--server.port", str(dashboard_port)],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
         )
 
-    console.print("[bold green]Starting Aegis Master Process...[/bold green]")
+    console.print("[bold green]Starting Aegis Master Process (Ray)...[/bold green]")
 
-    from aegis.orchestrator.master import MasterProcess
+    import ray
+    from aegis.ray.master import MasterActor
 
-    master = MasterProcess()
     try:
-        asyncio.run(master.start())
+        # Initialize Ray
+        ray.init(ignore_reinit_error=True)
+
+        # Start Master Actor
+        master = MasterActor.remote()
+
+        # Run the master loop
+        # This will block until the master actor finishes (which is effectively never unless stopped)
+        ray.get(master.start.remote())
+
     except KeyboardInterrupt:
-        # Master handles signals, but just in case
-        pass
+        console.print("\n[yellow]Stopping Ray...[/yellow]")
+        try:
+            ray.get(master.stop.remote())
+        except Exception:
+            pass
+        ray.shutdown()
     except Exception as e:
         console.print(f"[bold red]Master Process failed:[/bold red] {e}")
+        ray.shutdown()
         sys.exit(1)
 
 
@@ -772,279 +789,486 @@ Agents read this file to understand the broader project goals, architectural dec
                 f.write(default_memory)
             console.print(f"[green]✓[/green] Created swarm_memory.md")
 
-        # 3. Create user_preferences.md
-        prefs_file = cwd / "user_preferences.md"
-        if prefs_file.exists():
-            console.print(f"[yellow]! user_preferences.md already exists at {prefs_file}[/yellow]")
-        else:
-            default_prefs = """# User Preferences
-
-This file contains your personal preferences and rules for the Aegis swarm.
-Agents will respect these guidelines when generating code or making decisions.
-
-## Coding Style
-- Prefer explicit over implicit.
-- Use type hints everywhere.
-- Write docstrings for all public modules, classes, and functions.
-
-## Communication
-- Be concise.
-- Focus on technical details.
-"""
             with open(prefs_file, "w") as f:
                 f.write(default_prefs)
             console.print(f"[green]✓[/green] Created user_preferences.md")
-
-        # 4. Create .aegis directory
-        aegis_dir = cwd / ".aegis"
-        if aegis_dir.exists():
-             console.print(f"[yellow]! .aegis directory already exists at {aegis_dir}[/yellow]")
-        else:
-            aegis_dir.mkdir()
-            console.print(f"[green]✓[/green] Created .aegis directory")
-
-        console.print("\n[bold green]Initialization complete![/bold green]")
-        console.print("Please edit [bold].env[/bold] to add your API keys and configuration.")
 
     except Exception as e:
         console.print(f"[red]Error initializing project: {e}[/red]")
         sys.exit(1)
 
 
+@main.group(invoke_without_command=True)
+@click.pass_context
+def project(ctx):
+    """Manage Aegis projects.
+
+    If no command is provided, lists all tracked projects.
+    """
+    if ctx.invoked_subcommand is None:
+        ctx.invoke(list_projects)
+
+
+@project.command(name="list")
+def list_projects():
+    """List all tracked projects."""
+    from rich.table import Table
+
+    tracker = ProjectTracker()
+    projects = tracker.get_projects()
+
+    if not projects:
+        console.print("[yellow]No tracked projects found.[/yellow]")
+        return
+
+    table = Table(title="Tracked Projects")
+    table.add_column("Name", style="cyan")
+    table.add_column("GID", style="dim")
+    table.add_column("Local Path")
+    table.add_column("GitHub Repo", style="green")
+
+    for p in projects:
+        table.add_row(
+            p["name"],
+            p["gid"],
+            p["local_path"],
+            p.get("github_repo") or "-"
+        )
+
+    console.print(table)
+
+
+@project.command(name="remove")
+@click.argument("name", required=False)
+@click.option("--all", "remove_all", is_flag=True, help="Remove all tracked projects")
+def remove_project(name: str | None, remove_all: bool):
+    """Remove a project from tracking.
+
+    NAME can be the project name or GID.
+    """
+    tracker = ProjectTracker()
+    projects = tracker.get_projects()
+
+    if remove_all:
+        if not projects:
+            console.print("[yellow]No tracked projects to remove.[/yellow]")
+            return
+
+        if click.confirm(f"Are you sure you want to remove ALL {len(projects)} tracked projects?", default=False):
+            for p in projects:
+                tracker.remove_project(p["gid"])
+            console.print(f"[green]✓[/green] Removed all projects.")
+        return
+
+    if not name:
+        console.print("[red]Error: Missing argument 'NAME'.[/red]")
+        console.print("Usage: aegis project remove <NAME> or aegis project remove --all")
+        sys.exit(1)
+
+    target_gid = None
+    target_name = None
+
+    # Find by GID or Name
+    for p in projects:
+        if p["gid"] == name:
+            target_gid = p["gid"]
+            target_name = p["name"]
+            break
+        if p["name"].lower() == name.lower():
+            target_gid = p["gid"]
+            target_name = p["name"]
+            break
+
+    if not target_gid:
+        console.print(f"[red]Project '{name}' not found.[/red]")
+        sys.exit(1)
+
+    if click.confirm(f"Are you sure you want to remove '{target_name}' ({target_gid})?", default=False):
+        tracker.remove_project(target_gid)
+        console.print(f"[green]✓[/green] Removed project '{target_name}'")
+
+
+@project.command(name="create")
+@click.argument("name")
+@click.option("--local-dir", help="Local directory for the project")
+@click.option("--github", help="GitHub repository (owner/repo)")
+@click.option("--asana", help="Asana project GID (if existing)")
+def create_project(name: str, local_dir: str | None, github: str | None, asana: str | None):
+    """Create or track a new Aegis project.
+
+    Interactive command to set up a project:
+    1. Local Directory
+    2. GitHub Repository
+    3. Asana Project (Create new or link existing)
+    """
+    from rich.prompt import Confirm, Prompt
+
+    settings = get_settings()
+    tracker = ProjectTracker()
+
+    # Check for duplicate name
+    existing_projects = tracker.get_projects()
+    for p in existing_projects:
+        if p["name"].lower() == name.lower():
+            console.print(f"[red]Error: A project with the name '{p['name']}' is already tracked.[/red]")
+            console.print(f"  GID: {p['gid']}")
+            console.print(f"  Path: {p['local_path']}")
+            console.print("\nPlease remove the existing project before creating a new one with the same name:")
+            console.print(f"  aegis project remove {p['name']}")
+            sys.exit(1)
+
+    console.print(f"[bold]Setting up project: {name}[/bold]\n")
+
+    # 1. Local Directory
+    if not local_dir:
+        default_dir = Path.cwd().parent / name.lower().replace(" ", "-")
+        # If we are in the root of a repo that matches the name, maybe suggest CWD?
+        if Path.cwd().name.lower() == name.lower().replace(" ", "-"):
+            default_dir = Path.cwd()
+
+        local_dir_input = Prompt.ask("Local Directory", default=str(default_dir))
+        local_path = Path(local_dir_input).resolve()
+    else:
+        local_path = Path(local_dir).resolve()
+
+    if not local_path.exists():
+        if Confirm.ask(f"Directory {local_path} does not exist. Create it?", default=True):
+            local_path.mkdir(parents=True, exist_ok=True)
+        else:
+            console.print("[red]Aborted.[/red]")
+            sys.exit(1)
+
+    # 2. GitHub Repository
+    github_repo = github
+    if not github_repo:
+        # Try to deduce from git config
+        default_github = None
+        git_config = local_path / ".git" / "config"
+        if git_config.exists():
+            try:
+                with open(git_config) as f:
+                    content = f.read()
+                    # Simple regex to find github url
+                    import re
+                    match = re.search(r'url = .*github\.com[:/]([^/]+/[^/\.\s]+)', content)
+                    if match:
+                        default_github = match.group(1)
+            except Exception:
+                pass
+
+        if not default_github:
+            # Fallback default
+            default_github = f"daveey/{name.lower().replace(' ', '-')}"
+
+        github_repo = Prompt.ask("GitHub Repository", default=default_github)
+
+    # 3. Asana Project
+    project_gid = asana
+
+    async def _setup_asana():
+        nonlocal project_gid
+        client = AsanaClient(settings.asana_access_token)
+
+        if project_gid:
+            # Verify existing
+            try:
+                p = await client.get_project(project_gid)
+                console.print(f"[green]✓[/green] Found existing project: {p.name}")
+            except Exception:
+                console.print(f"[red]Project {project_gid} not found.[/red]")
+                sys.exit(1)
+        else:
+            # Check portfolio for existing name
+            console.print("[dim]Checking portfolio for existing project...[/dim]")
+            portfolio_projects = await client.get_portfolio_projects(settings.asana_portfolio_gid)
+
+            existing_p = next((p for p in portfolio_projects if p.name.lower() == name.lower()), None)
+
+            if existing_p:
+                if Confirm.ask(f"Found existing project '{existing_p.name}' in portfolio. Use it?", default=True):
+                    project_gid = existing_p.gid
+
+            if not project_gid:
+                if Confirm.ask(f"Create new Asana project '{name}'?", default=True):
+                    # Create Project
+                    console.print("[dim]Creating project...[/dim]")
+                    new_project = await client.create_project(
+                        workspace_gid=settings.asana_workspace_gid,
+                        name=name,
+                        notes=f"Project: {name}\nRepo: https://github.com/{github_repo}",
+                        team_gid=settings.asana_team_gid
+                    )
+                    project_gid = new_project.gid
+                    console.print(f"[green]✓[/green] Created project {new_project.name} ({new_project.gid})")
+
+                    # Add to Portfolio
+                    console.print("[dim]Adding to portfolio...[/dim]")
+                    await client.add_project_to_portfolio(settings.asana_portfolio_gid, project_gid)
+                    console.print(f"[green]✓[/green] Added to portfolio")
+
+                    # Create Default Sections
+                    console.print("[dim]Creating default sections...[/dim]")
+                    default_sections = ["Triage", "Backlog", "In Progress", "Review", "Implemented", "Answered"]
+                    await client.ensure_project_sections(project_gid, default_sections)
+                    console.print(f"[green]✓[/green] Created sections")
+
+    try:
+        asyncio.run(_setup_asana())
+    except Exception as e:
+        console.print(f"[red]Error setting up Asana project: {e}[/red]")
+        sys.exit(1)
+
+    if not project_gid:
+        console.print("[red]No Asana project selected or created.[/red]")
+        sys.exit(1)
+
+    # 4. Create .aegis/settings.yaml
+    aegis_dir = local_path / ".aegis"
+    aegis_dir.mkdir(exist_ok=True)
+
+    settings_file = aegis_dir / "settings.yaml"
+    project_settings = {
+        "project_gid": project_gid,
+        "github_repo": github_repo,
+        "local_path": str(local_path)
+    }
+
+    import yaml
+
+    if settings_file.exists():
+        try:
+            with open(settings_file) as f:
+                existing_settings = yaml.safe_load(f) or {}
+
+            # Check for conflicts
+            conflicts = []
+            if existing_settings.get("project_gid") != project_gid:
+                conflicts.append(f"project_gid: {existing_settings.get('project_gid')} -> {project_gid}")
+            if existing_settings.get("github_repo") != github_repo:
+                conflicts.append(f"github_repo: {existing_settings.get('github_repo')} -> {github_repo}")
+
+            if conflicts:
+                console.print(f"[yellow]Warning: {settings_file} exists with different settings:[/yellow]")
+                for c in conflicts:
+                    console.print(f"  {c}")
+
+                if not Confirm.ask("Overwrite settings.yaml?", default=True):
+                    console.print("[dim]Skipping settings.yaml update.[/dim]")
+                else:
+                    with open(settings_file, "w") as f:
+                        yaml.safe_dump(project_settings, f)
+                    console.print(f"[green]✓[/green] Updated .aegis/settings.yaml")
+        except Exception as e:
+             console.print(f"[red]Error reading existing settings.yaml: {e}[/red]")
+    else:
+        with open(settings_file, "w") as f:
+            yaml.safe_dump(project_settings, f)
+        console.print(f"[green]✓[/green] Created .aegis/settings.yaml")
+
+
+    # Save to Tracker
+    tracker.add_project(project_gid, name, local_path, github_repo)
+
+    console.print(f"\n[bold green]Project '{name}' setup complete![/bold green]")
+    console.print(f"  Local: {local_path}")
+    console.print(f"  GitHub: {github_repo}")
+    console.print(f"  Asana: {project_gid}")
+
+
+
+
+
+
 
 @main.command()
-@click.argument("name")
+@click.argument("name", required=False)
 @click.argument("path", required=False)
-def create(name: str, path: str | None):
-    """Create a new Aegis project.
+def create(name: str | None, path: str | None):
+    """Create or connect an Aegis project.
 
-    NAME: Name of the project (will be created in Asana)
-    PATH: Local path to initialize (defaults to current directory)
+    Interactive wizard to set up a project.
+    Can create a new Asana project or connect to an existing one.
+
+    NAME: Name of the project (optional, will ask if not provided)
+    PATH: Local path to initialize (optional, defaults to current directory)
     """
-    console.print(f"[bold]Creating Aegis Project: {name}[/bold]\n")
+    from rich.prompt import Confirm, Prompt
+    from aegis.sync.structure import load_schema, get_workspace_custom_fields, sync_project_structure
+
+    console.print("[bold]Aegis Project Setup[/bold]\n")
 
     try:
         settings = Settings()
         client = AsanaClient(settings.asana_access_token)
         tracker = ProjectTracker()
 
-        # 1. Resolve Path
-        if path:
-            project_path = Path(path).resolve()
-            if not project_path.exists():
-                console.print(f"[dim]Creating directory {project_path}...[/dim]")
-                project_path.mkdir(parents=True)
-        else:
-            project_path = Path.cwd()
+        # 1. Determine Mode (Create vs Connect)
+        mode = "create"
+        if not name:
+            console.print("Do you want to create a new Asana project or connect an existing one?")
+            choice = Prompt.ask("Select option", choices=["create", "connect"], default="create")
+            mode = choice
 
-        console.print(f"[dim]Local path: {project_path}[/dim]")
+        project_gid = None
+        project_name = name
+        project_obj = None
 
-        # 2. Create Asana Project
-        console.print("[dim]Creating project in Asana...[/dim]")
+        # 2. Project Selection/Creation
+        if mode == "connect":
+            console.print("\n[dim]Fetching projects...[/dim]")
+            # Try to list projects from portfolio if available, otherwise search?
+            # Search is hard. Let's ask for GID or list portfolio.
 
-        # Determine team GID (required for organizations)
-        team_gid = settings.asana_team_gid
-        if not team_gid:
-             # Try to find a team or warn?
-             # For now, let's assume workspace is enough or user provided team_gid in env
-             pass
-
-        async def _create_project_flow():
-            # Create project
-            project = await client.create_project(
-                workspace_gid=settings.asana_workspace_gid,
-                name=name,
-                notes="Managed by Aegis Swarm",
-                team_gid=team_gid
-            )
-            console.print(f"[green]✓[/green] Created project {project.name} ({project.gid})")
-
-            # Add to portfolio if configured
             if settings.asana_portfolio_gid:
-                try:
-                    await client.add_project_to_portfolio(settings.asana_portfolio_gid, project.gid)
-                    console.print(f"[green]✓[/green] Added to portfolio {settings.asana_portfolio_gid}")
-                except Exception as e:
-                    console.print(f"[yellow]Warning: Failed to add to portfolio: {e}[/yellow]")
+                projects = asyncio.run(client.get_portfolio_projects(settings.asana_portfolio_gid))
 
-            # 3. Add Custom Fields
-            console.print("[dim]Adding custom fields...[/dim]")
+                if projects:
+                    console.print("\n[bold]Available Projects:[/bold]")
+                    for i, p in enumerate(projects, 1):
+                        console.print(f"  {i}. {p.name} ({p.gid})")
+                    console.print(f"  0. Enter GID manually")
 
-            # Load schema
-            schema_path = Path(__file__).parent.parent.parent / "schema" / "asana_config.json"
-            if schema_path.exists():
-                with open(schema_path) as f:
-                    schema = json.load(f)
+                    choice = Prompt.ask("Select project", choices=[str(i) for i in range(len(projects) + 1)], default="0")
 
-                required_fields = schema.get("custom_fields", [])
-
-                # Get workspace fields to find GIDs
-                # We need to use the low-level API or add a method to client
-                # For now, let's use the client's internal API client if accessible or add a method
-                # Client has `custom_fields_api`
-
-                # We'll implement a quick lookup here using the client's api_client
-                # Ideally this should be in AsanaClient, but for speed we do it here or use a helper
-                # Actually, let's use the helper from tools/setup_asana_custom_fields.py logic
-                # But we can't import it easily.
-                # Let's use the client.api_client
-
-                custom_fields_api = asana.CustomFieldsApi(client.api_client)
-                workspace_fields = await asyncio.to_thread(
-                    custom_fields_api.get_custom_fields_for_workspace,
-                    settings.asana_workspace_gid,
-                    {"opt_fields": "name,gid"}
-                )
-
-                workspace_field_map = {f["name"]: f["gid"] for f in workspace_fields}
-
-                added_count = 0
-                for field_def in required_fields:
-                    fname = field_def["name"]
-                    if fname in workspace_field_map:
-                        fgid = workspace_field_map[fname]
-                        try:
-                            await client.add_custom_field_to_project(project.gid, fgid)
-                            added_count += 1
-                        except Exception as e:
-                            console.print(f"[yellow]  ! Failed to add {fname}: {e}[/yellow]")
+                    if choice == "0":
+                        project_gid = Prompt.ask("Enter Asana Project GID")
                     else:
-                        console.print(f"[yellow]  ! Custom field '{fname}' not found in workspace. Run 'python tools/setup_asana_custom_fields.py'[/yellow]")
-
-                console.print(f"[green]✓[/green] Added {added_count} custom fields")
+                        selected = projects[int(choice) - 1]
+                        project_gid = selected.gid
+                        project_name = selected.name
+                        project_obj = selected
+                else:
+                    project_gid = Prompt.ask("Enter Asana Project GID")
             else:
-                console.print("[yellow]Warning: Schema file not found, skipping custom fields.[/yellow]")
+                project_gid = Prompt.ask("Enter Asana Project GID")
 
-            return project
+            if not project_obj:
+                # Verify and get name
+                project_obj = asyncio.run(client.get_project(project_gid))
+                project_name = project_obj.name
+                console.print(f"[green]✓[/green] Found project: {project_name}")
 
-        project = asyncio.run(_create_project_flow())
-
-        # 4. Sync Sections
-        console.print("[dim]Syncing sections...[/dim]")
-        tools_path = Path(__file__).parent.parent.parent / "tools"
-        sync_tool = tools_path / "sync_asana_project.py"
-
-        if sync_tool.exists():
-             env = os.environ.copy()
-             env.update({
-                "ASANA_ACCESS_TOKEN": settings.asana_access_token,
-                "ASANA_WORKSPACE_GID": settings.asana_workspace_gid,
-                "ASANA_PORTFOLIO_GID": settings.asana_portfolio_gid,
-                "ANTHROPIC_API_KEY": settings.anthropic_api_key,
-            })
-             if settings.asana_team_gid:
-                env["ASANA_TEAM_GID"] = settings.asana_team_gid
-
-             try:
-                subprocess.run(
-                    ["python", str(sync_tool), "--project", project.gid],
-                    cwd=Path.cwd(),
-                    env=env,
-                    check=True,
-                    capture_output=True
-                )
-                console.print(f"[green]✓[/green] Synced sections")
-             except subprocess.CalledProcessError as e:
-                console.print(f"[yellow]Warning: Failed to sync sections: {e}[/yellow]")
         else:
-             console.print(f"[yellow]Warning: Sync tool not found at {sync_tool}[/yellow]")
+            # Create Mode
+            if not project_name:
+                project_name = Prompt.ask("Enter project name")
+
+            console.print(f"\n[dim]Creating project '{project_name}' in Asana...[/dim]")
+
+            # Determine team
+            team_gid = settings.asana_team_gid
+            if not team_gid:
+                # If we are in an org, we might need a team.
+                # For now rely on workspace default or error if missing.
+                pass
+
+            async def _create():
+                p = await client.create_project(
+                    workspace_gid=settings.asana_workspace_gid,
+                    name=project_name,
+                    notes="Managed by Aegis Swarm",
+                    team_gid=team_gid
+                )
+
+                # Add to portfolio
+                if settings.asana_portfolio_gid:
+                    try:
+                        await client.add_project_to_portfolio(settings.asana_portfolio_gid, p.gid)
+                    except Exception as e:
+                        console.print(f"[yellow]Warning: Failed to add to portfolio: {e}[/yellow]")
+
+                return p
+
+            project_obj = asyncio.run(_create())
+            project_gid = project_obj.gid
+            console.print(f"[green]✓[/green] Created project {project_name} ({project_gid})")
+
+        # 3. Local Path
+        if not path:
+            default_path = Path.cwd()
+            # If creating new, maybe suggest subdirectory?
+            if mode == "create":
+                default_path = default_path / project_name.lower().replace(" ", "-")
+
+            path_str = Prompt.ask("Local path", default=str(default_path))
+            project_path = Path(path_str).resolve()
+        else:
+            project_path = Path(path).resolve()
+
+        if not project_path.exists():
+            if Confirm.ask(f"Directory {project_path} does not exist. Create it?", default=True):
+                project_path.mkdir(parents=True)
+            else:
+                console.print("[red]Aborted.[/red]")
+                sys.exit(1)
+
+        console.print(f"[dim]Using local path: {project_path}[/dim]")
+
+        # 4. Sync Structure (Sections & Custom Fields)
+        if Confirm.ask("Sync project structure (sections & custom fields)?", default=True):
+            console.print("\n[dim]Syncing structure...[/dim]")
+
+            async def _sync():
+                schema = await load_schema()
+                workspace_fields = await get_workspace_custom_fields(client, settings.asana_workspace_gid)
+                await sync_project_structure(client, project_gid, schema, workspace_fields)
+
+            try:
+                asyncio.run(_sync())
+                console.print(f"[green]✓[/green] Structure synced")
+            except Exception as e:
+                console.print(f"[red]Error syncing structure: {e}[/red]")
+                if not Confirm.ask("Continue anyway?", default=False):
+                    sys.exit(1)
 
         # 5. Track Project
-        tracker.add_project(project.gid, name, project_path)
+        tracker.add_project(project_gid, project_name, project_path)
         console.print(f"[green]✓[/green] Tracked project locally")
 
-        # 6. Initialize Local Files (Init)
-        # We can call the init function logic, but since it's a click command, it's harder to invoke directly without context.
-        # We'll just replicate the logic or call it via subprocess?
-        # Replicating is safer and cleaner here.
-
-        console.print("[dim]Initializing local files...[/dim]")
+        # 6. Initialize Local Files
+        console.print("\n[dim]Initializing local files...[/dim]")
 
         # .env
         env_file = project_path / ".env"
         if not env_file.exists():
-            # Copy from current env or example?
-            # If we are creating a new project, we probably want to copy the current .env if it exists
-            # or create a new one.
-            # Let's assume we want to copy the current configuration since we are running with it.
-
             current_env = Path.cwd() / ".env"
             if current_env.exists():
                 import shutil
                 shutil.copy(current_env, env_file)
                 console.print(f"[green]✓[/green] Copied .env from current directory")
             else:
-                # Write default
-                default_env = """# Asana Configuration
-ASANA_ACCESS_TOKEN=your_asana_personal_access_token_here
-ASANA_WORKSPACE_GID=your_workspace_gid
-ASANA_PORTFOLIO_GID=your_portfolio_gid
-
-# Anthropic Configuration
-ANTHROPIC_API_KEY=your_anthropic_api_key_here
-ANTHROPIC_MODEL=claude-sonnet-4-5-20250929
-ANTHROPIC_MAX_TOKENS=4096
-
-# Database Configuration
-DATABASE_URL=postgresql://localhost/aegis
-REDIS_URL=redis://localhost:6379
-
-# Orchestrator Configuration
-POLL_INTERVAL_SECONDS=30
-MAX_CONCURRENT_TASKS=5
-LOG_LEVEL=INFO
-"""
+                # Basic default
                 with open(env_file, "w") as f:
-                    f.write(default_env)
+                    f.write(f"ASANA_ACCESS_TOKEN={settings.asana_access_token}\n")
+                    f.write(f"ASANA_WORKSPACE_GID={settings.asana_workspace_gid}\n")
+                    f.write(f"ASANA_PORTFOLIO_GID={settings.asana_portfolio_gid}\n")
+                    f.write(f"ANTHROPIC_API_KEY={settings.anthropic_api_key}\n")
                 console.print(f"[green]✓[/green] Created .env")
 
         # swarm_memory.md
         memory_file = project_path / "swarm_memory.md"
         if not memory_file.exists():
-            default_memory = f"""# Swarm Memory - {name}
-
-This file serves as the global context and long-term memory for the Aegis swarm.
-
-## Project Overview
-{name} is a new project managed by Aegis.
-
-## Architecture
-[High-level architecture description]
-
-## Current Focus
-Initial setup and planning.
-"""
             with open(memory_file, "w") as f:
-                f.write(default_memory)
+                f.write(f"# Swarm Memory - {project_name}\n\n## Project Overview\n{project_name} managed by Aegis.\n")
             console.print(f"[green]✓[/green] Created swarm_memory.md")
 
         # user_preferences.md
         prefs_file = project_path / "user_preferences.md"
         if not prefs_file.exists():
-            default_prefs = """# User Preferences
-
-## Coding Style
-- Prefer explicit over implicit.
-- Use type hints everywhere.
-
-## Communication
-- Be concise.
-"""
             with open(prefs_file, "w") as f:
-                f.write(default_prefs)
+                f.write("# User Preferences\n\n## Coding Style\n- Explicit over implicit.\n")
             console.print(f"[green]✓[/green] Created user_preferences.md")
 
         # .aegis directory
-        aegis_dir = project_path / ".aegis"
-        aegis_dir.mkdir(exist_ok=True)
-        console.print(f"[green]✓[/green] Created .aegis directory")
+        (project_path / ".aegis").mkdir(exist_ok=True)
 
-        console.print(f"\n[bold green]Project {name} created successfully![/bold green]")
-        console.print(f"Location: {project_path}")
-        console.print(f"Asana: https://app.asana.com/0/{project.gid}/list")
+        console.print(f"\n[bold green]Setup complete![/bold green]")
+        console.print(f"Project: {project_name}")
+        console.print(f"Path: {project_path}")
+        console.print(f"Asana: https://app.asana.com/0/{project_gid}/list")
 
     except Exception as e:
-        console.print(f"[red]Error creating project: {e}[/red]")
+        console.print(f"[red]Error: {e}[/red]")
         sys.exit(1)
 
 

@@ -29,6 +29,7 @@ class AsanaProject(BaseModel):
     notes: str | None = None
     archived: bool = False
     public: bool = False
+    workspace_gid: str | None = None
 
 
 class AsanaSection(BaseModel):
